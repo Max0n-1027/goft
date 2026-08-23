@@ -1,0 +1,290 @@
+package config
+
+import (
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+// writeConfig writes a configuration file and returns its path.
+func writeConfig(t *testing.T, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	p := filepath.Join(dir, "job.yaml")
+	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestLoadAppliesDefaultsAndExpandsEnv(t *testing.T) {
+	t.Setenv("GOFT_TEST_PASSWORD", "s3cret")
+	local := t.TempDir()
+
+	p := writeConfig(t, `
+local:
+  path: `+local+`
+remote:
+  protocol: sftp
+  host: example
+  path: /upload
+  password: ${GOFT_TEST_PASSWORD}
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := string(cfg.Remote.Password); got != "s3cret" {
+		t.Errorf("password = %q, want the expanded environment value", got)
+	}
+	if cfg.Verify != VerifyHash {
+		t.Errorf("verify = %q, want the hash default", cfg.Verify)
+	}
+	if cfg.Workers != 1 {
+		t.Errorf("workers = %d, want the default 1", cfg.Workers)
+	}
+	if cfg.Name != "job" {
+		t.Errorf("name = %q, want it derived from the file name", cfg.Name)
+	}
+	if cfg.PollInterval.Seconds() != 5 {
+		t.Errorf("poll_interval = %v, want the 5s default", cfg.PollInterval)
+	}
+}
+
+func TestSecretNeverFormatsItself(t *testing.T) {
+	s := Secret("hunter2")
+	if got := s.String(); strings.Contains(got, "hunter2") {
+		t.Errorf("String() = %q, want the value masked", got)
+	}
+	if got := s.LogValue().String(); strings.Contains(got, "hunter2") {
+		t.Errorf("LogValue() = %q, want the value masked", got)
+	}
+	if string(s) != "hunter2" {
+		t.Error("the underlying value must still be readable via a conversion")
+	}
+}
+
+func TestValidateRejectsMoveToInsideSource(t *testing.T) {
+	local := t.TempDir()
+	cfg := validConfig(local)
+	cfg.PostAction = PostMove
+	cfg.MoveTo = filepath.Join(local, "done")
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("move_to inside local.path must be rejected: moved files would be transferred again forever")
+	}
+	if !strings.Contains(err.Error(), "move_to") {
+		t.Errorf("error = %v, want it to name move_to", err)
+	}
+}
+
+func TestValidateAcceptsMoveToOutsideSource(t *testing.T) {
+	local := t.TempDir()
+	cfg := validConfig(local)
+	cfg.PostAction = PostMove
+	cfg.MoveTo = t.TempDir()
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() = %v, want nil", err)
+	}
+}
+
+func TestValidateReportsEveryProblemAtOnce(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.Verify = "sha256"
+	cfg.OnExists = "replace"
+	cfg.Workers = 0
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("want an error")
+	}
+	for _, want := range []string{"verify", "on_exists", "workers"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %s; all problems should be reported together", err, want)
+		}
+	}
+}
+
+func TestValidateForDirectionRejectsMoveOnRecv(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.PostAction = PostMove
+	cfg.MoveTo = t.TempDir()
+
+	if err := ValidateForDirection(cfg, DirRecv); err == nil {
+		t.Error("post_action: move is send-only and must be rejected for recv")
+	}
+	if err := ValidateForDirection(cfg, DirSend); err != nil {
+		t.Errorf("send with move should be accepted, got %v", err)
+	}
+}
+
+func TestValidateRequiresTheSMBShare(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.Remote.Protocol = ProtocolSMB
+
+	err := Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "share") {
+		t.Fatalf("Validate() = %v, want the missing share reported", err)
+	}
+	// The credentials are not required here: a Credential Manager entry may
+	// supply them, which is only known once the connection is resolved.
+	for _, notWanted := range []string{"remote.user is required", "remote.password is required"} {
+		if strings.Contains(fmt.Sprint(err), notWanted) {
+			t.Errorf("error %q rejects credentials that a store could still provide", err)
+		}
+	}
+}
+
+func TestRetryDefaultsAndBackoff(t *testing.T) {
+	local := t.TempDir()
+	p := writeConfig(t, "local:\n  path: "+local+"\nremote:\n  protocol: sftp\n  host: h\n  path: /p\n")
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Retry.MaxAttempts != 3 {
+		t.Errorf("retry.max_attempts = %d, want the default 3", cfg.Retry.MaxAttempts)
+	}
+
+	// 2s, then 4s: the wait grows so a server that needs a moment gets one.
+	if got := cfg.Retry.Wait(1); got != 2*time.Second {
+		t.Errorf("Wait(1) = %v, want 2s", got)
+	}
+	if got := cfg.Retry.Wait(2); got != 4*time.Second {
+		t.Errorf("Wait(2) = %v, want 4s", got)
+	}
+}
+
+func TestValidateRejectsImpossibleRetrySettings(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		retry Retry
+	}{
+		{"zero attempts", Retry{MaxAttempts: 0, Backoff: 2}},
+		{"shrinking backoff", Retry{MaxAttempts: 3, Backoff: 0.5}},
+		{"negative interval", Retry{MaxAttempts: 3, Interval: -1, Backoff: 2}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validConfig(t.TempDir())
+			cfg.Retry = tc.retry
+			if err := Validate(cfg); err == nil {
+				t.Errorf("Validate() = nil, want %+v rejected", tc.retry)
+			}
+		})
+	}
+}
+
+func TestWarningsFlagZeroStableDuration(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.StableDuration = 0
+	got := Warnings(cfg)
+	if len(got) == 0 || !strings.Contains(got[0], "stable_duration") {
+		t.Errorf("Warnings() = %v, want a remark about stable_duration", got)
+	}
+}
+
+func validConfig(local string) *Config {
+	return &Config{
+		Name:  "job",
+		Local: Local{Path: local},
+		Remote: Remote{
+			Protocol: ProtocolSFTP,
+			Host:     "example",
+			Path:     "/upload",
+		},
+		Verify:         VerifyHash,
+		OnExists:       OnExistsSkip,
+		PostAction:     PostNone,
+		Workers:        1,
+		PollInterval:   5_000_000_000,
+		StableDuration: 3_000_000_000,
+		Retry:          Retry{MaxAttempts: 3, Interval: 2_000_000_000, Backoff: 2},
+		Log:            Log{Level: "info", Rotation: RotationSize},
+	}
+}
+
+func TestRemoteDescribe(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		remote Remote
+		want   string
+	}{
+		{"sftp", Remote{Protocol: ProtocolSFTP, Host: "h", Path: "/upload/invoice"}, "sftp://h/upload/invoice"},
+		{"ftp", Remote{Protocol: ProtocolFTP, Host: "h", Path: "/pub"}, "ftp://h/pub"},
+		// The share is part of where an SMB file actually lives, so a location
+		// without it points somewhere else entirely.
+		{"smb with share", Remote{Protocol: ProtocolSMB, Host: "h", Share: "shared", Path: "/invoice"}, "smb://h/shared/invoice"},
+		{"smb at the share root", Remote{Protocol: ProtocolSMB, Host: "h", Share: "shared", Path: "/"}, "smb://h/shared"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.remote.Describe(); got != tc.want {
+				t.Errorf("Describe() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestLogFieldsDefaultToTheStandardSet(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+
+	set := cfg.LogFields(slog.LevelInfo)
+	for _, want := range DefaultLogFields {
+		if !set.Has(want) {
+			t.Errorf("field %q missing from the default set", want)
+		}
+	}
+	// The transfer rate is about performance rather than about what happened,
+	// so it joins the default set only when the level asks for detail.
+	if set.Has(FieldRateMiBs) {
+		t.Error("rate_mibs should not be in the default set at info level")
+	}
+	if !cfg.LogFields(slog.LevelDebug).Has(FieldRateMiBs) {
+		t.Error("rate_mibs should join the default set at debug level")
+	}
+}
+
+func TestLogFieldsNamedExplicitlyAreExactlyWhatIsWritten(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.Log.Fields = []string{FieldSrc, FieldResult}
+
+	// Naming fields replaces the defaults entirely, including at debug level.
+	set := cfg.LogFields(slog.LevelDebug)
+	if !set.Has(FieldSrc) || !set.Has(FieldResult) {
+		t.Error("the named fields should be selected")
+	}
+	for _, unwanted := range []string{FieldBytes, FieldHashSrc, FieldRateMiBs} {
+		if set.Has(unwanted) {
+			t.Errorf("field %q was not named but is selected", unwanted)
+		}
+	}
+}
+
+func TestEmptyLogFieldsSelectsNothing(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.Log.Fields = []string{}
+
+	// An empty list is a deliberate choice and differs from omitting the key.
+	if set := cfg.LogFields(slog.LevelInfo); len(set) != 0 {
+		t.Errorf("set = %v, want an explicit empty list to select nothing", set)
+	}
+}
+
+func TestValidateRejectsUnknownLogFields(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.Log.Fields = []string{FieldSrc, "checksum"}
+
+	err := Validate(cfg)
+	if err == nil {
+		t.Fatal("an unknown field name must be rejected rather than silently ignored")
+	}
+	if !strings.Contains(err.Error(), "checksum") || !strings.Contains(err.Error(), FieldHashSrc) {
+		t.Errorf("error = %v, want it to name the offender and list what is valid", err)
+	}
+}

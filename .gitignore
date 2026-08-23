@@ -1,0 +1,25 @@
+# Build output. build.sh writes one binary per platform under here, which adds
+# up to tens of megabytes.
+/build/
+
+# Binaries from a plain `go build .` in the working directory.
+/goft
+/goft.exe
+
+# Go test and profiling artefacts.
+*.test
+*.out
+*.prof
+
+# Local job configurations. These carry host names and often credentials, so
+# they are kept out by default; goft.example.yaml is the one that is tracked.
+/goft.yaml
+/*.local.yaml
+
+# Editor and operating system leftovers.
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
