@@ -105,8 +105,10 @@ log:
   #   attempt      how many tries it took, when more than one
   #   rate_mibs    transfer rate; in the default set only at debug level
   #
-  # time, level, msg, job, direction and event are always written: a record
-  # missing those cannot be placed.
+  # time, level, msg, job, direction, event and cycle_id are always written: a
+  # record missing those cannot be placed. cycle_id is a fresh UUID for each
+  # pass over the sending side, so the records one pass produced can be picked
+  # out of a log a watching process has been appending to for days.
   fields: [src, dst, protocol, bytes, duration_ms, verify, result, reason, error, hash_src, hash_dst, attempt]
   max_size_mb: 100
   max_backups: 7

@@ -158,7 +158,15 @@ log:
   fields: [src, dst, bytes, result, error, hash_src, hash_dst]
 ```
 
-キーごと省略すると既定のセットになります。`time` / `level` / `msg` / `job` / `direction` / `event` は常に書かれます。これらを欠いたレコードは解釈できないためです。指定できる項目名は [goft.example.yaml](goft.example.yaml) に一覧があり、未知の名前は黙って無視せず設定エラーになります。
+キーごと省略すると既定のセットになります。`time` / `level` / `msg` / `job` / `direction` / `event` / `cycle_id` は常に書かれます。これらを欠いたレコードは解釈できないためです。
+
+`cycle_id` は送り側を1周するごとに発行される UUID で、その周期が出したレコード（転送・再送・サマリ）すべてに同じ値が入ります。常駐プロセスが何日も追記し続けたログから、1周期分だけを取り出せます。
+
+```bash
+jq -r 'select(.cycle_id == "6482c7d7-...")' goft.log
+```
+
+起動・停止のレコードには `cycle_id` が付きません。どの周期にも属さず、プロセスに属するものだからです。指定できる項目名は [goft.example.yaml](goft.example.yaml) に一覧があり、未知の名前は黙って無視せず設定エラーになります。
 
 詳細度の設定は `log.level` の1つだけで、両方の出力を制御します。各レベルで何が出るかは [goft.example.yaml](goft.example.yaml) 末尾の表を参照してください。
 

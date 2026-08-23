@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
 	"goft/internal/config"
@@ -61,6 +62,13 @@ type Engine struct {
 	cfg    *config.Config
 	filter *scan.Filter
 	stab   *scan.Stabilizer
+	// base is the process logger; log is base with the current cycle's id
+	// attached, so that every record a cycle produces carries it without the
+	// id having to be threaded through each call.
+	//
+	// Cycles never overlap: log is written before a cycle's workers start and
+	// only read while they run.
+	base   *slog.Logger
 	log    *slog.Logger
 	fields config.LogFieldSet
 	now    func() time.Time
@@ -88,6 +96,7 @@ func New(opts Options) *Engine {
 		cfg:    opts.Config,
 		filter: scan.NewFilter(opts.Config.Include, opts.Config.Exclude),
 		stab:   scan.NewStabilizer(opts.Config.StableDuration, now),
+		base:   log,
 		log:    log,
 		fields: opts.Config.LogFields(level),
 		now:    now,
@@ -122,8 +131,13 @@ func (e *Engine) Serve(ctx context.Context) error {
 }
 
 // RunOnce performs a single cycle.
+//
+// Every record the cycle produces carries a fresh cycle id, so that one pass
+// can be picked out of a log that a watching process has been appending to for
+// days.
 func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	start := e.now()
+	e.log = e.base.With(logging.KeyCycleID, uuid.NewString())
 
 	src, err := e.opts.NewSrc(ctx)
 	if err != nil {

@@ -17,8 +17,11 @@ const (
 	// line without them cannot be placed.
 	KeyJob       = "job"
 	KeyDirection = "direction"
-	KeyEvent     = "event"
-	KeyStep      = "step"
+	// KeyCycleID ties together everything one pass over the sending side
+	// produced, which is what makes a long-running log readable.
+	KeyCycleID = "cycle_id"
+	KeyEvent   = "event"
+	KeyStep    = "step"
 
 	// Per-file parameters, named once in the configuration vocabulary so the
 	// two cannot drift apart.
