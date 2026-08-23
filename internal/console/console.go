@@ -90,7 +90,6 @@ func (c *Console) Plan(p engine.Plan) {
 
 	// A polling cycle that found nothing stays silent.
 	if len(p.Files) == 0 && !p.DryRun {
-		c.notable = false
 		return
 	}
 
@@ -148,8 +147,18 @@ func (c *Console) CycleError(err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	c.pending, c.notable = nil, false
+	// Whatever the cycle had already reported — the header naming the files it
+	// found — is worth seeing alongside the reason it got no further.
+	c.flush()
 	fmt.Fprintf(c.w, "goft %s  %s\n", c.job, err.Error())
+}
+
+// flush writes out anything the cycle has been holding back and starts afresh.
+func (c *Console) flush() {
+	for _, line := range c.pending {
+		fmt.Fprintln(c.w, line)
+	}
+	c.pending, c.notable = nil, false
 }
 
 // Summary closes out a cycle.
@@ -168,9 +177,7 @@ func (c *Console) Summary(s engine.Summary) {
 
 	if c.buffered {
 		if c.notable {
-			for _, line := range c.pending {
-				fmt.Fprintln(c.w, line)
-			}
+			c.flush()
 		}
 		c.pending, c.notable = nil, false
 	}

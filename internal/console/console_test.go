@@ -259,3 +259,22 @@ func TestCycleErrorIsAlwaysShown(t *testing.T) {
 		t.Errorf("output = %q, want the failure reported", buf.String())
 	}
 }
+
+func TestCycleErrorShowsWhatTheCycleHadFound(t *testing.T) {
+	var buf bytes.Buffer
+	c := New(Options{Writer: &buf, Level: slog.LevelInfo, Job: "j",
+		Direction: config.DirSend, Local: "/out", Remote: "sftp://host/in", Buffered: true})
+
+	// The header had already been written when the destination turned out to
+	// be unreachable. Both halves of that story are useful.
+	c.Plan(engine.Plan{Files: []scan.File{{Path: "a.csv"}, {Path: "b.csv"}}, Bytes: 20})
+	c.CycleError(errString("dial tcp: connection refused"))
+
+	out := buf.String()
+	if !strings.Contains(out, "2 files") {
+		t.Errorf("output = %q, want it to keep what the cycle had found", out)
+	}
+	if !strings.Contains(out, "connection refused") {
+		t.Errorf("output = %q, want the failure", out)
+	}
+}

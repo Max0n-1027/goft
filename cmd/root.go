@@ -107,7 +107,6 @@ func findConfig() (string, error) {
 // job holds everything one command needs to run.
 type job struct {
 	cfg      *config.Config
-	dir      config.Direction
 	log      *slog.Logger
 	closeLog io.Closer
 	console  *console.Console
@@ -199,7 +198,7 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 		newSrc, newDst = newRemote, newLocal
 	}
 
-	j := &job{cfg: cfg, dir: dir, log: log, closeLog: closer}
+	j := &job{cfg: cfg, log: log, closeLog: closer}
 
 	opts := engine.Options{
 		Config:    cfg,
