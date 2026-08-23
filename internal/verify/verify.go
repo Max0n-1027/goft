@@ -37,6 +37,19 @@ func HashFile(ctx context.Context, fs fsys.FS, name string) (uint64, error) {
 	return Hash(rc)
 }
 
+// Comparison is the outcome of checking an existing destination file against
+// the source.
+type Comparison struct {
+	// Same reports whether the two hold the same content.
+	Same bool
+	// SrcHash and DstHash are the digests that were compared, set only when
+	// Hashed is true. A size difference settles the question without either
+	// file being read, so they are absent in that case.
+	SrcHash uint64
+	DstHash uint64
+	Hashed  bool
+}
+
 // Identical reports whether an existing destination file already matches the
 // source, which lets an overwrite be skipped.
 //
@@ -46,27 +59,27 @@ func HashFile(ctx context.Context, fs fsys.FS, name string) (uint64, error) {
 //
 // The "none" method has nothing to compare with, so it always reports false and
 // the file is transferred again.
-func Identical(ctx context.Context, method config.Verify, src fsys.FS, srcName string, srcSize int64, dst fsys.FS, dstName string, dstSize int64) (bool, error) {
+func Identical(ctx context.Context, method config.Verify, src fsys.FS, srcName string, srcSize int64, dst fsys.FS, dstName string, dstSize int64) (Comparison, error) {
 	switch method {
 	case config.VerifyNone:
-		return false, nil
+		return Comparison{}, nil
 	case config.VerifyLength:
-		return srcSize == dstSize, nil
+		return Comparison{Same: srcSize == dstSize}, nil
 	case config.VerifyHash:
 		if srcSize != dstSize {
-			return false, nil
+			return Comparison{}, nil
 		}
 		srcHash, err := HashFile(ctx, src, srcName)
 		if err != nil {
-			return false, fmt.Errorf("hash source: %w", err)
+			return Comparison{}, fmt.Errorf("hash source: %w", err)
 		}
 		dstHash, err := HashFile(ctx, dst, dstName)
 		if err != nil {
-			return false, fmt.Errorf("hash destination: %w", err)
+			return Comparison{}, fmt.Errorf("hash destination: %w", err)
 		}
-		return srcHash == dstHash, nil
+		return Comparison{Same: srcHash == dstHash, SrcHash: srcHash, DstHash: dstHash, Hashed: true}, nil
 	default:
-		return false, fmt.Errorf("unknown verify method %q", method)
+		return Comparison{}, fmt.Errorf("unknown verify method %q", method)
 	}
 }
 

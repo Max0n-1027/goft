@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -64,13 +65,7 @@ func runTest(ctx context.Context, out io.Writer) error {
 		report("warning", warning, "")
 	}
 
-	if fi, err := os.Stat(cfg.Local.Path); err != nil {
-		report("local", cfg.Local.Path, "FAILED  "+err.Error())
-	} else if !fi.IsDir() {
-		report("local", cfg.Local.Path, "FAILED  not a directory")
-	} else {
-		report("local", cfg.Local.Path, "OK")
-	}
+	checkLocal(cfg.Local.Path, report)
 
 	resolved, err := fsys.Resolve(cfg.Remote)
 	if err != nil {
@@ -129,6 +124,36 @@ func checkSend(ctx context.Context, cfg config.Remote, remote fsys.FS, exists bo
 	defer pfs.Close()
 
 	return probeWrite(ctx, pfs, parent.Path+" is writable; "+cfg.Path+" will be created on first transfer", report)
+}
+
+// checkLocal reports on the local directory, which a send job reads from and a
+// recv job writes to.
+//
+// Writability is probed rather than inferred: a directory that exists and is
+// listable can still refuse a file, and finding that out during the first
+// transfer is finding out too late.
+func checkLocal(dir string, report func(string, string, string)) {
+	fi, err := os.Stat(dir)
+	switch {
+	case err != nil:
+		report("local", dir, "FAILED  "+err.Error())
+		return
+	case !fi.IsDir():
+		report("local", dir, "FAILED  not a directory")
+		return
+	}
+
+	probe := filepath.Join(dir, fmt.Sprintf(".goft-test-%d", os.Getpid()))
+	if err := os.Mkdir(probe, 0o755); err != nil {
+		// Reading still works, so a send job is fine; only recv needs to write.
+		report("local", dir, "OK  readable; not writable, which recv would need")
+		return
+	}
+	if err := os.Remove(probe); err != nil {
+		report("local", dir, "OK  probe directory left behind: "+probe)
+		return
+	}
+	report("local", dir, "OK  readable and writable")
 }
 
 // checkList reports whether the remote directory can be read, which is what a

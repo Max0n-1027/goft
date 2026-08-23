@@ -109,25 +109,63 @@ func New(opts Options) *Engine {
 // one has finished, so a file being transferred can never be picked up a second
 // time and no in-flight bookkeeping is needed.
 func (e *Engine) Serve(ctx context.Context) error {
+	failures := 0
 	for {
-		if _, err := e.RunOnce(ctx); err != nil {
-			if ctx.Err() != nil {
-				return nil
-			}
-			// A cycle that could not start (usually the connection) is logged
-			// and retried on the next tick rather than killing the daemon.
+		_, err := e.RunOnce(ctx)
+		switch {
+		case err == nil:
+			failures = 0
+		case ctx.Err() != nil:
+			return nil
+		default:
+			// A cycle that could not start at all is logged and tried again
+			// rather than killing the daemon.
+			failures++
+			wait := e.cycleWait(failures)
 			e.log.Error("transfer cycle failed",
-				logging.KeyEvent, logging.EventSummary, logging.KeyError, err.Error())
+				logging.KeyEvent, logging.EventSummary,
+				logging.KeyError, err.Error(),
+				"consecutive_failures", failures,
+				"retry_in_ms", wait.Milliseconds())
 			if e.opts.OnCycleError != nil {
 				e.opts.OnCycleError(err)
 			}
 		}
+
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(e.cfg.PollInterval):
+		case <-time.After(e.cycleWait(failures)):
 		}
 	}
+}
+
+// maxCycleBackoff bounds how far apart cycles drift while they keep failing.
+const maxCycleBackoff = 5 * time.Minute
+
+// cycleWait is the pause before the next cycle.
+//
+// While cycles are failing outright — an unreachable server, say — the pause
+// doubles. A job polling every second against a server that has gone for good
+// would otherwise write tens of thousands of identical errors a day and hammer
+// the network doing it. The interval returns to normal the moment a cycle
+// succeeds, so a brief outage costs nothing.
+//
+// The pause never drops below poll_interval, and never grows past
+// maxCycleBackoff unless poll_interval is already longer than that.
+func (e *Engine) cycleWait(failures int) time.Duration {
+	wait := e.cfg.PollInterval
+	cap := maxCycleBackoff
+	if wait > cap {
+		cap = wait
+	}
+	for i := 0; i < failures && wait < cap; i++ {
+		wait *= 2
+	}
+	if wait > cap {
+		return cap
+	}
+	return wait
 }
 
 // RunOnce performs a single cycle.

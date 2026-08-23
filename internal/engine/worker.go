@@ -101,7 +101,7 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		return fail(err)
 	}
 
-	switch decision, err := e.decideExisting(ctx, c, t, idx, dir, base); {
+	switch decision, cmp, err := e.decideExisting(ctx, c, t, idx, dir, base); {
 	case err != nil:
 		return fail(err)
 	case decision == skipExisting:
@@ -109,7 +109,9 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		return finish(res)
 	case decision == skipIdentical:
 		// Already there and byte for byte the same, so the transfer is complete
-		// as far as the source is concerned.
+		// as far as the source is concerned. The digests that settled it are
+		// recorded, because "not sent" needs its evidence as much as "sent".
+		res.SrcHash, res.DstHash, res.Hashed = cmp.SrcHash, cmp.DstHash, cmp.Hashed
 		if err := e.postAction(ctx, c, name); err != nil {
 			res.postActionFailed = true
 			return fail(err)
@@ -182,29 +184,29 @@ const (
 // The answer comes from the listing taken at the start of the cycle rather than
 // from a Stat per file, which is what keeps a directory of already-transferred
 // files from costing a round trip each on every pass.
-func (e *Engine) decideExisting(ctx context.Context, c *conn, t target, idx *destIndex, dir, base string) (existingDecision, error) {
+func (e *Engine) decideExisting(ctx context.Context, c *conn, t target, idx *destIndex, dir, base string) (existingDecision, verify.Comparison, error) {
 	dstSize, exists := idx.lookup(dir, base)
 	if !exists {
-		return proceed, nil
+		return proceed, verify.Comparison{}, nil
 	}
 	if e.cfg.OnExists == config.OnExistsSkip {
-		return skipExisting, nil
+		return skipExisting, verify.Comparison{}, nil
 	}
 
 	name := t.file.Path
-	var identical bool
+	var cmp verify.Comparison
 	err := e.step(ctx, name, "compare", func() error {
 		var err error
-		identical, err = verify.Identical(ctx, e.cfg.Verify, c.src, name, t.file.Size, c.dst, name, dstSize)
+		cmp, err = verify.Identical(ctx, e.cfg.Verify, c.src, name, t.file.Size, c.dst, name, dstSize)
 		return err
 	})
 	switch {
 	case err != nil:
-		return proceed, err
-	case identical:
-		return skipIdentical, nil
+		return proceed, cmp, err
+	case cmp.Same:
+		return skipIdentical, cmp, nil
 	default:
-		return proceed, nil
+		return proceed, cmp, nil
 	}
 }
 

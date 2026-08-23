@@ -290,3 +290,26 @@ func TestEveryRecordThatNamesAFileNamesItInFull(t *testing.T) {
 		}
 	}
 }
+
+func TestIdenticalSkipRecordsTheDigests(t *testing.T) {
+	h := newSeeded(t)
+	h.cfg.OnExists = config.OnExistsOverwrite
+	h.write(h.dstDir, "a.csv", "hello")
+
+	var rec map[string]any
+	for _, r := range runAtLevel(t, h, slog.LevelInfo) {
+		if r["reason"] == "identical" {
+			rec = r
+		}
+	}
+	if rec == nil {
+		t.Fatal("the file should have been skipped as identical")
+	}
+	// "not sent, because it was already there" needs its evidence as much as
+	// "sent, and here is the proof it arrived".
+	src, _ := rec["hash_src"].(string)
+	dst, _ := rec["hash_dst"].(string)
+	if src == "" || src != dst {
+		t.Errorf("hash_src = %q hash_dst = %q, want the digests that settled it", src, dst)
+	}
+}

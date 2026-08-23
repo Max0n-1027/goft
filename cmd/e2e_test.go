@@ -333,3 +333,54 @@ func TestUnsupportedSSHConfigDirectiveIsWarnedAboutOnEveryRun(t *testing.T) {
 		t.Errorf("the log does not mention the directive that was ignored:\n%s", recorded)
 	}
 }
+
+func TestTestCommandProbesTheLocalDirectory(t *testing.T) {
+	s := newScenario(t, "")
+	var out strings.Builder
+	resetFlags()
+	rootCmd.SetArgs([]string{"test", "-c", s.cfgPath})
+	rootCmd.SetOut(&out)
+	Execute()
+	rootCmd.SetOut(os.Stdout)
+
+	if !strings.Contains(out.String(), "readable and writable") {
+		t.Errorf("output does not report on the local directory:\n%s", out.String())
+	}
+	// The probe must not survive the check, on either side.
+	entries, err := os.ReadDir(s.localDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".goft-test-") {
+			t.Errorf("test left %s behind locally", e.Name())
+		}
+	}
+}
+
+func TestTestCommandReportsAReadOnlyLocalDirectory(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can write to a read-only directory")
+	}
+	s := newScenario(t, "")
+	if err := os.Chmod(s.localDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(s.localDir, 0o755)
+
+	var out strings.Builder
+	resetFlags()
+	rootCmd.SetArgs([]string{"test", "-c", s.cfgPath})
+	rootCmd.SetOut(&out)
+	code := Execute()
+	rootCmd.SetOut(os.Stdout)
+
+	// A send job is perfectly happy with a read-only source, so this is a
+	// remark rather than a failure.
+	if code != 0 {
+		t.Errorf("exit code = %d, want 0: a read-only local directory still works for send", code)
+	}
+	if !strings.Contains(out.String(), "recv would need") {
+		t.Errorf("output does not say which direction is affected:\n%s", out.String())
+	}
+}

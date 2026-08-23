@@ -123,6 +123,12 @@ sending directory should not keep growing.
 **Transferred files are created mode 0644**, subject to the process umask, so
 that whatever consumes them next can read them. Windows ignores the mode.
 
+**A watching job that keeps failing goes quiet rather than loud.** When a whole
+cycle cannot run — an unreachable server, say — the pause before the next one
+doubles, up to five minutes, and returns to `poll_interval` as soon as a cycle
+succeeds. A job polling every second against a server that has gone for good
+would otherwise write tens of thousands of identical errors a day.
+
 **A failed file is retried, but only when that could help.** Within a cycle a
 file is attempted up to `retry.max_attempts` times (3 by default). A dropped
 connection or a failed verification is retried; a missing file, a permission
@@ -192,7 +198,9 @@ goft send >/dev/null     # just the JSON log
 ```
 
 Every verified transfer records `hash_src` and `hash_dst` at info level, so the
-log is enough on its own to show that a file arrived intact. Both ends are
+log is enough on its own to show that a file arrived intact. A file skipped
+because the destination already held the same content records them too: not
+sending needs its evidence as much as sending does. Both ends are
 recorded in full — `/data/out/invoice/a.csv` and
 `sftp://host/upload/invoice/a.csv` — because a path relative to a root the
 reader cannot see identifies nothing.
