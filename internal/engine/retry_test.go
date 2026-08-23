@@ -51,3 +51,13 @@ func TestRetryableLooksThroughWrapping(t *testing.T) {
 		t.Error("a wrapped permanent error is still permanent")
 	}
 }
+
+func TestAFileTheServerCallsBusyIsRetried(t *testing.T) {
+	// FTP reply 450 means temporarily unavailable, which is exactly what a
+	// second attempt is for. It used to be translated to "does not exist",
+	// which the classification wrote off as permanent.
+	busy := fmt.Errorf("list: %w", &textproto.Error{Code: 450, Msg: "file busy"})
+	if !Retryable(busy) {
+		t.Error("a file the server says is busy should be tried again")
+	}
+}

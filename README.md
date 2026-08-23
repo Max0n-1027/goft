@@ -150,8 +150,13 @@ to compare, so the file is always sent again.
 
 All three protocols have been exercised against real servers: OpenSSH 10.2,
 vsftpd 3.0.5 and Samba 4.23, transferring in both directions and comparing
-checksums outside of goft. SFTP is additionally covered by a test that runs an
-SSH server in process, so `go test ./...` needs nothing external.
+checksums outside of goft.
+
+`go test ./...` needs nothing external: it runs an SSH server and an FTP server
+in process. SMB has no such server available, so its transfer methods are only
+covered by the live suite below. Two FTP behaviours are the same story — a
+missing path answered with an empty listing, and a directory that DELE will not
+remove — because the in-process server does neither, while vsftpd does both.
 
 To point the live suite at a server of your own:
 

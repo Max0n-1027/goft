@@ -230,19 +230,24 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// translateFTPError maps the "file unavailable" replies onto fs.ErrNotExist so
-// that the engine can treat every protocol the same way.
+// translateFTPError maps reply 550 onto fs.ErrNotExist so that the engine can
+// treat every protocol the same way.
 //
-// Reply 550 also covers permission denied, which is folded in here as well.
-// That is deliberate: goft only consults this to decide whether something is
-// missing before creating or replacing it, and both answers lead to the same
-// next step, with the real reply text preserved in the wrapped error.
+// 550 also covers permission denied, which is folded in here as well. That is
+// deliberate: goft only consults this to decide whether something is missing
+// before creating or replacing it, and both answers lead to the same next step,
+// with the real reply text preserved in the wrapped error.
+//
+// 450 is deliberately left alone. RFC 959 gives it to a file that is
+// temporarily unavailable — busy, typically — which is precisely the case a
+// retry exists for. Reporting it as "does not exist" would have the retry
+// classification write it off as permanent.
 func translateFTPError(err error) error {
 	if err == nil {
 		return nil
 	}
 	var te *textproto.Error
-	if errors.As(err, &te) && (te.Code == 550 || te.Code == 450) {
+	if errors.As(err, &te) && te.Code == 550 {
 		return fmt.Errorf("%w: %s", fs.ErrNotExist, te.Msg)
 	}
 	return err
