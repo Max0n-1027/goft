@@ -196,3 +196,63 @@ func tracedFrom(res *Resolved, field, source string) bool {
 	}
 	return false
 }
+
+func TestNetrcCandidatesPreferDotNetrc(t *testing.T) {
+	// On Windows the file lives under %USERPROFILE%, which is the directory
+	// os.UserHomeDir reports there, so only the file names differ by platform.
+	for _, tc := range []struct {
+		goos string
+		want []string
+	}{
+		{"windows", []string{".netrc", "_netrc"}},
+		{"linux", []string{".netrc"}},
+		{"darwin", []string{".netrc"}},
+	} {
+		t.Run(tc.goos, func(t *testing.T) {
+			home := t.TempDir()
+			got := netrcCandidates(home, tc.goos)
+			if len(got) != len(tc.want) {
+				t.Fatalf("candidates = %v, want %d of them", got, len(tc.want))
+			}
+			for i := range got {
+				if filepath.Dir(got[i]) != home {
+					t.Errorf("candidate %d = %q, want it under %q", i, got[i], home)
+				}
+				if filepath.Base(got[i]) != tc.want[i] {
+					t.Errorf("candidate %d = %q, want %q", i, filepath.Base(got[i]), tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestDotNetrcWinsOverUnderscoreNetrc(t *testing.T) {
+	home := t.TempDir()
+	for _, name := range []string{".netrc", "_netrc"} {
+		if err := os.WriteFile(filepath.Join(home, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Both names exist, as they might on a machine that has been through
+	// several tools. The documented one is the one that is used.
+	got := firstExisting(netrcCandidates(home, "windows"))
+	if filepath.Base(got) != ".netrc" {
+		t.Errorf("chose %q, want .netrc", got)
+	}
+}
+
+func TestUnderscoreNetrcIsStillAccepted(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, "_netrc"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := firstExisting(netrcCandidates(home, "windows")); filepath.Base(got) != "_netrc" {
+		t.Errorf("chose %q, want the older name to still work when it is all there is", got)
+	}
+	// Elsewhere the underscore name means nothing.
+	if got := firstExisting(netrcCandidates(home, "linux")); got != "" {
+		t.Errorf("chose %q on linux, want nothing", got)
+	}
+}

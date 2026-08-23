@@ -56,7 +56,7 @@ log:
 
 - ファイル中のどこでも `${VAR}` は環境変数から展開されます
 - **sftp** は書かなかった項目を `~/.ssh/config` から補います（`HostName`、`Port`、`User`、`IdentityFile`、`UserKnownHostsFile`）
-- **ftp** は `user` と `password` を `~/.netrc`（Windows は `_netrc`）から補います
+- **ftp** は `user` と `password` を `~/.netrc`（Windows は `%USERPROFILE%\.netrc`）から補います
 - **smb** は既定のファイルを読みません。`user`、`password`、`share` を設定に書いてください
 
 設定ファイルに書いた値は常に既定ファイルより優先されます。何がどこから解決されたかは `goft test` で確認できます。

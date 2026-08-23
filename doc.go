@@ -44,7 +44,8 @@ part of the file: it is chosen by the command.
 
 Credentials need not be written in plain text. Any ${VAR} in the file is
 replaced from the environment, sftp fills in whatever is left out from
-~/.ssh/config, and ftp does the same from ~/.netrc. Run "goft test" to see the
+~/.ssh/config, and ftp does the same from ~/.netrc (%USERPROFILE%\.netrc on
+Windows). Run "goft test" to see the
 values that were resolved and where each one came from.
 
 goft.example.yaml documents every setting, and README.md covers the behaviour

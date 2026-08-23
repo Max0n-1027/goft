@@ -65,7 +65,8 @@ Nothing needs to be written in plain text:
 - `${VAR}` anywhere in the file is replaced from the environment.
 - **sftp** fills in anything you leave out from `~/.ssh/config`, including
   `HostName`, `Port`, `User`, `IdentityFile` and `UserKnownHostsFile`.
-- **ftp** fills in `user` and `password` from `~/.netrc` (`_netrc` on Windows).
+- **ftp** fills in `user` and `password` from `~/.netrc`, or
+  `%USERPROFILE%\.netrc` on Windows.
 - **smb** reads no default file; give it `user`, `password` and `share`.
 
 What the configuration file states always wins over a default file. Run

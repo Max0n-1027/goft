@@ -114,8 +114,12 @@ func lookupNetrc(entries []netrcEntry, host string) (netrcEntry, string, bool) {
 	return netrcEntry{}, "", false
 }
 
-// netrcPath returns the file to read, following the same order of preference as
-// the ftp and curl tools, with an explicit job setting taking priority.
+// netrcPath returns the file to read.
+//
+// An explicit job setting wins, then the NETRC environment variable, then the
+// user's home directory: %USERPROFILE%\.netrc on Windows and ~/.netrc
+// everywhere else. os.UserHomeDir reports %USERPROFILE% on Windows, so those
+// two name the same directory.
 func netrcPath(r config.Remote) string {
 	if r.NetrcFile != "" {
 		return r.NetrcFile
@@ -127,11 +131,28 @@ func netrcPath(r config.Remote) string {
 	if err != nil {
 		return ""
 	}
-	candidates := []string{filepath.Join(home, ".netrc")}
-	if runtime.GOOS == "windows" {
-		candidates = []string{filepath.Join(home, "_netrc"), filepath.Join(home, ".netrc")}
+	return firstExisting(netrcCandidates(home, runtime.GOOS))
+}
+
+// netrcCandidates lists the file names to try, in order of preference.
+//
+// Windows also recognises _netrc, left over from the days when a leading dot
+// was awkward to create there. It is still accepted, but only when .netrc is
+// absent, so that the name the operator is told to use is the one that wins.
+func netrcCandidates(home, goos string) []string {
+	names := []string{".netrc"}
+	if goos == "windows" {
+		names = append(names, "_netrc")
 	}
-	for _, p := range candidates {
+	paths := make([]string, len(names))
+	for i, n := range names {
+		paths[i] = filepath.Join(home, n)
+	}
+	return paths
+}
+
+func firstExisting(paths []string) string {
+	for _, p := range paths {
 		if _, err := os.Stat(p); err == nil {
 			return p
 		}

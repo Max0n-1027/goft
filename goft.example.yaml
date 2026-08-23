@@ -30,8 +30,9 @@ remote:
 
   # use_ssh_config: true                    # sftp: false stops ~/.ssh/config being read
   # ssh_config_file: /etc/goft/ssh_config   # sftp: use this file instead of the usual search
-  # use_netrc: true                         # ftp: false stops ~/.netrc being read
+  # use_netrc: true                         # ftp: false stops the netrc lookup
   # netrc_file: /etc/goft/netrc             # ftp: use this file instead of the usual search
+  # ftp reads ~/.netrc, or %USERPROFILE%\.netrc on Windows.
 
   # share: shared                           # smb only; do not repeat it in `path`
   # domain: WORKGROUP                       # smb only
