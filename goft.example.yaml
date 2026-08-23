@@ -1,0 +1,123 @@
+# goft job configuration.
+#
+# One file describes one job, and one job runs in one process. The transfer
+# direction is not written here: `goft send` uploads, `goft recv` downloads.
+# To run several jobs, give each its own file and its own process.
+
+# Shown in every log record. Defaults to the file name without its extension.
+name: invoice-upload
+
+# The local side of the transfer. It is the source for send and the
+# destination for recv.
+local:
+  path: /data/out/invoice
+
+# The remote side.
+remote:
+  protocol: sftp              # ftp | sftp | smb
+  host: invoice-sftp          # for sftp this may be a ~/.ssh/config Host alias
+  path: /upload/invoice
+
+  # Anything left out below is filled in from ~/.ssh/config (sftp) or
+  # ~/.netrc (ftp). What is written here always wins.
+  # port: 22
+  # user: uploader
+  # private_key: ~/.ssh/id_ed25519
+  # private_key_passphrase: ${GOFT_SSH_PASSPHRASE}
+  # password: ${GOFT_SFTP_PASSWORD}
+  # known_hosts: ~/.ssh/known_hosts
+  # insecure_skip_host_key_check: false
+
+  # use_ssh_config: true                    # sftp: false stops ~/.ssh/config being read
+  # ssh_config_file: /etc/goft/ssh_config   # sftp: use this file instead of the usual search
+  # use_netrc: true                         # ftp: false stops ~/.netrc being read
+  # netrc_file: /etc/goft/netrc             # ftp: use this file instead of the usual search
+
+  # share: shared                           # smb only; do not repeat it in `path`
+  # domain: WORKGROUP                       # smb only
+  # smb credentials come from this file only; there is no default file to read.
+
+# --- Which files take part. Applied to the sending side. ---
+
+recursive: false              # true also descends into subdirectories
+include: ["*.csv"]            # a file must match one of these
+exclude: ["*.tmp", "*.part", ".*"]  # ...and none of these; also prunes directories
+max_file_size_mb: 500         # 0 or omitted means no limit; larger files are skipped
+
+# How long a file's size and timestamp must stay unchanged before it is
+# considered finished being written. With serve, the shortest possible delay is
+# max(poll_interval, stable_duration).
+stable_duration: 3s
+poll_interval: 5s             # serve only: pause between cycles
+workers: 4                    # files transferred in parallel; also the connection count
+
+# --- What happens to each file. ---
+
+# hash   compare xxHash after reading the file back from the destination
+# length compare sizes only
+# none   accept anything that did not error
+verify: hash
+
+# skip      leave an existing destination file alone
+# overwrite replace it, unless `verify` shows the two are already identical
+on_exists: skip
+
+# none   leave the source file where it is
+# delete remove it
+# move   relocate it under move_to, keeping its relative path (send only)
+post_action: move
+move_to: /data/done/invoice   # required for move; must not be inside local.path
+
+# --- Retrying a failed file. ---
+
+# A file that fails is attempted again within the same cycle, but only when the
+# error could plausibly go differently next time: a dropped connection or a
+# failed verification is retried, while a missing file, a permission error or a
+# 5xx reply from the server is not. The connection is rebuilt before each retry,
+# because retrying over a connection that has just died would fail identically.
+retry:
+  max_attempts: 3           # counts the first try; 1 disables retrying
+  interval: 2s              # wait before the first retry
+  backoff: 2.0              # multiply the wait each time; 1.0 keeps it constant
+
+# --- Logging. ---
+
+log:
+  path: /var/log/goft/invoice-upload.log   # empty writes to stdout, or stderr when the console is on
+  level: info                 # debug | info | warn | error
+  rotation: daily             # size | daily | monthly
+
+  # Which parameters each transferred file is recorded with. Omit the key for
+  # the set below; name fields to write exactly those and nothing else.
+  #
+  #   src          path relative to the sending root
+  #   dst          where the file was written, in full
+  #   protocol     ftp | sftp | smb
+  #   bytes        bytes transferred
+  #   duration_ms  how long the file took
+  #   verify       the verification method used
+  #   result       success | skipped | failed
+  #   reason       why it was skipped
+  #   error        why it failed
+  #   hash_src     xxHash of what was sent
+  #   hash_dst     xxHash read back from the destination
+  #   attempt      how many tries it took, when more than one
+  #   rate_mibs    transfer rate; in the default set only at debug level
+  #
+  # time, level, msg, job, direction and event are always written: a record
+  # missing those cannot be placed.
+  fields: [src, dst, protocol, bytes, duration_ms, verify, result, reason, error, hash_src, hash_dst, attempt]
+  max_size_mb: 100
+  max_backups: 7
+  max_age_days: 30
+  compress: true
+
+# `level` is the only verbosity control, and the console output follows it too:
+#
+#   error  transfer failures, connection failures, configuration errors
+#   warn   + size limit skips, relaxed host key checking, ignored ssh_config
+#          directives, post-processing retries
+#   info   + startup and shutdown, one line per file including the source and
+#            destination hashes, a summary per cycle
+#   debug  + per-step timings, how each connection parameter was resolved,
+#            transfer rates
