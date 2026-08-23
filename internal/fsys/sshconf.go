@@ -93,7 +93,8 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 	if err := resolvePort(res, r, look); err != nil {
 		return nil, err
 	}
-	resolveUser(res, r, look)
+	resolveCredentials(res, r)
+	resolveUser(res, look)
 	resolveAuth(res, r, look, home)
 	resolveKnownHosts(res, r, look, home)
 	resolveHostKeyPolicy(res, look)
@@ -139,34 +140,49 @@ func resolvePort(res *Resolved, r config.Remote, look sshLookup) error {
 	return nil
 }
 
-func resolveUser(res *Resolved, r config.Remote, look sshLookup) {
-	switch v, ok := look.get("User"); {
-	case r.User != "":
-		res.User = r.User
-		res.record("user", res.User, SourceYAML)
-	case ok:
-		res.User = v
-		res.record("user", v, SourceSSHConfig)
-	default:
-		if u, err := user.Current(); err == nil {
-			res.User = u.Username
-		}
-		res.record("user", res.User, SourceDefault)
-	}
-}
-
-// resolveAuth settles the password and the identities to offer.
+// resolveCredentials settles the user and password before ssh_config is read.
 //
-// Identity files are filtered by existence, because ssh_config commonly names
-// several and only some of them are on any given machine.
-func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
+// The credential store sits between the job file and the default files, so it
+// has to be consulted here rather than alongside the identity files: by the
+// time ssh_config has supplied a User, or the current login has been taken as
+// the default, there is no gap left for a stored user name to fill.
+func resolveCredentials(res *Resolved, r config.Remote) {
+	if r.User != "" {
+		res.User = r.User
+		res.record("user", r.User, SourceYAML)
+	}
 	res.Password = r.Password
 	if r.Password.IsSet() {
 		res.record("password", r.Password.String(), SourceYAML)
 	}
+	// The store holds a password, never a key passphrase: a passphrase unlocks
+	// a file rather than authenticating to a host, and has no user name to be
+	// registered against.
 	res.Passphrase = r.PrivateKeyPassphrase
-	applyCredential(res, r)
 
+	applyCredential(res, r)
+}
+
+func resolveUser(res *Resolved, look sshLookup) {
+	if res.User != "" {
+		return
+	}
+	if v, ok := look.get("User"); ok {
+		res.User = v
+		res.record("user", v, SourceSSHConfig)
+		return
+	}
+	if u, err := user.Current(); err == nil {
+		res.User = u.Username
+	}
+	res.record("user", res.User, SourceDefault)
+}
+
+// resolveAuth settles the identities to offer.
+//
+// Identity files are filtered by existence, because ssh_config commonly names
+// several and only some of them are on any given machine.
+func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
 	switch keys := look.all("IdentityFile"); {
 	case r.PrivateKey != "":
 		res.KeyFiles = []string{expandTokens(r.PrivateKey, res.Host, res.User, home)}

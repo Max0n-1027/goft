@@ -18,8 +18,9 @@ remote:
   host: invoice-sftp          # for sftp this may be a ~/.ssh/config Host alias
   path: /upload/invoice
 
-  # Anything left out below is filled in from ~/.ssh/config (sftp) or
-  # ~/.netrc (ftp). What is written here always wins.
+  # Anything left out below is filled in from the Windows Credential Manager,
+  # then ~/.ssh/config (sftp) or ~/.netrc (ftp). What is written here always
+  # wins.
   # port: 22
   # user: uploader
   # private_key: ~/.ssh/id_ed25519
@@ -34,9 +35,18 @@ remote:
   # netrc_file: /etc/goft/netrc             # ftp: use this file instead of the usual search
   # ftp reads ~/.netrc, or %USERPROFILE%\.netrc on Windows.
 
+  # On Windows, `user` and `password` for any protocol can come from a generic
+  # credential registered for goft, which keeps them out of this file without
+  # an environment variable. It is read before ~/.netrc and ~/.ssh/config:
+  #   cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
+  #   cmdkey /generic:goft:sftp://invoice-sftp /user:uploader /pass:secret
+  # private_key_passphrase is not read from the store; it unlocks a file rather
+  # than authenticating to a host.
+  # use_credential_manager: true            # false stops the store being read
+  # credential_target: LegacyEntry          # read this entry instead of goft:<protocol>://<host>
+
   # share: shared                           # smb only; do not repeat it in `path`
   # domain: WORKGROUP                       # smb only
-  # smb credentials come from this file only; there is no default file to read.
 
 # --- Which files take part. Applied to the sending side. ---
 

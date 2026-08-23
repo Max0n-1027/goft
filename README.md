@@ -69,11 +69,22 @@ Nothing needs to be written in plain text:
   `%USERPROFILE%\.netrc` on Windows.
 - **smb** has no file of its own; give it `user`, `password` and `share`.
 - On **Windows**, a generic Credential Manager entry registered for goft fills
-  in `user` and `password` for any protocol:
+  in `user` and `password` for any protocol, including ftp. The entry is named
+  `goft:<protocol>://<host>`, so one host can hold a separate credential per
+  protocol:
 
   ```
+  cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
   cmdkey /generic:goft:smb://fileserver /user:svc-transfer /pass:secret
   ```
+
+  It is read before `~/.netrc` and `~/.ssh/config`, so an ftp job with an entry
+  registered needs no netrc at all, and an sftp job authenticating by password
+  needs neither a password in the file nor a `User` in ssh_config. Only the user
+  name and the password come from the store; `private_key_passphrase` unlocks a
+  file rather than authenticating to a host, so it stays in the job file or in
+  `${VAR}`. `credential_target` reads an entry under some other name, and
+  `use_credential_manager: false` skips the store.
 
   The credentials Windows keeps for network shares are a different kind, and
   the platform reserves them for its own authentication packages, so a share

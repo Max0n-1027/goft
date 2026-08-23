@@ -45,8 +45,13 @@ part of the file: it is chosen by the command.
 Credentials need not be written in plain text. Any ${VAR} in the file is
 replaced from the environment, sftp fills in whatever is left out from
 ~/.ssh/config, and ftp does the same from ~/.netrc (%USERPROFILE%\.netrc on
-Windows). Run "goft test" to see the
-values that were resolved and where each one came from.
+Windows). On Windows a generic credential registered as goft:<protocol>://<host>
+supplies the user and password for any protocol, and is read before those files:
+
+	cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
+
+Run "goft test" to see the values that were resolved and where each one came
+from.
 
 goft.example.yaml documents every setting, and README.md covers the behaviour
 worth knowing before putting a job into service.

@@ -86,13 +86,17 @@ func containsZero(b []byte) bool {
 	return false
 }
 
+// credentialStore is the lookup applyCredential goes through. Tests replace it
+// to stand in for a store, which exists only on Windows.
+var credentialStore = lookupCredential
+
 // applyCredential fills in whatever the job left out from the credential store,
 // recording where each value came from.
 //
 // The configuration file always wins: the store is a place to keep a password
 // out of the file, not a way to override one that is in it.
 func applyCredential(res *Resolved, r config.Remote) {
-	user, password, found := lookupCredential(r)
+	user, password, found := credentialStore(r)
 	if !found {
 		return
 	}

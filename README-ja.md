@@ -58,11 +58,14 @@ log:
 - **sftp** は書かなかった項目を `~/.ssh/config` から補います（`HostName`、`Port`、`User`、`IdentityFile`、`UserKnownHostsFile`）
 - **ftp** は `user` と `password` を `~/.netrc`（Windows は `%USERPROFILE%\.netrc`）から補います
 - **smb** には専用のファイルがありません。`user`、`password`、`share` を設定に書いてください
-- **Windows** では、goft 用に登録した汎用資格情報から `user` と `password` を補えます（プロトコルを問いません）:
+- **Windows** では、goft 用に登録した汎用資格情報から `user` と `password` を補えます（ftp を含め、プロトコルを問いません）。エントリ名は `goft:<protocol>://<host>` なので、同じホストでもプロトコルごとに別の資格情報を持てます:
 
   ```
+  cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
   cmdkey /generic:goft:smb://fileserver /user:svc-transfer /pass:secret
   ```
+
+  資格情報マネージャーは `~/.netrc` や `~/.ssh/config` より先に参照されるため、エントリを登録しておけば ftp のジョブに netrc は不要ですし、パスワード認証の sftp のジョブも設定ファイルにパスワードを書かず ssh_config に `User` を書かずに済みます。取得できるのはユーザー名とパスワードだけです。`private_key_passphrase` はホストへの認証ではなく鍵ファイルの復号に使うものなので、設定ファイルか `${VAR}` に置いたままになります。別名で登録済みのエントリを読むには `credential_target`、資格情報マネージャーを一切読まないようにするには `use_credential_manager: false` を指定します
 
   Windows が共有フォルダ用に保存する資格情報はこれとは別の種類で、プラットフォームが認証パッケージ専用としているため、エクスプローラーや `net use` が記憶したものは再利用できません
 

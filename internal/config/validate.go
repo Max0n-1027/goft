@@ -46,9 +46,9 @@ func quoted[T ~string](vals []T) string {
 // Validate checks everything that can be decided from the configuration file
 // alone. All problems are reported together rather than one at a time.
 //
-// Credentials for ftp and sftp are deliberately not checked here: they may be
-// supplied by ~/.netrc or ~/.ssh/config, so they can only be validated once the
-// connection parameters have been resolved.
+// Credentials are deliberately not checked here: they may be supplied by the
+// Windows Credential Manager, ~/.netrc or ~/.ssh/config, so they can only be
+// validated once the connection parameters have been resolved.
 func Validate(c *Config) error {
 	var errs []error
 	add := func(format string, args ...any) {
