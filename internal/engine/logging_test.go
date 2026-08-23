@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -251,20 +252,41 @@ func TestRateCanBeAskedForAtAnyLevel(t *testing.T) {
 	}
 }
 
-func TestDestinationIsRecorded(t *testing.T) {
+func TestBothEndsAreRecordedInFull(t *testing.T) {
 	h := newSeeded(t)
 
-	var dst string
+	var src, dst string
 	for _, r := range runAtLevel(t, h, slog.LevelInfo) {
 		if r["event"] == "transfer" {
+			src, _ = r["src"].(string)
 			dst, _ = r["dst"].(string)
 		}
 	}
-	if dst == "" {
-		t.Fatal("a transfer record should say where the file went")
+
+	// A path relative to a root the reader cannot see identifies nothing, so
+	// both ends are recorded in full.
+	if !filepath.IsAbs(src) || !strings.HasSuffix(src, "a.csv") {
+		t.Errorf("src = %q, want the full local path of the file", src)
 	}
-	// A send lands on the remote, so the destination is the remote location.
-	if !strings.Contains(dst, "a.csv") || !strings.HasPrefix(dst, "sftp://") {
-		t.Errorf("dst = %q, want the remote location of the file", dst)
+	if !strings.HasPrefix(dst, "sftp://") || !strings.HasSuffix(dst, "a.csv") {
+		t.Errorf("dst = %q, want the full remote location of the file", dst)
+	}
+}
+
+func TestEveryRecordThatNamesAFileNamesItInFull(t *testing.T) {
+	h := newSeeded(t)
+	h.cfg.Log.Level = "debug"
+
+	for _, r := range runAtLevel(t, h, slog.LevelDebug) {
+		for _, key := range []string{"src", "dst"} {
+			v, ok := r[key].(string)
+			if !ok {
+				continue
+			}
+			// Step breakdowns and cleanup warnings name files too.
+			if !filepath.IsAbs(v) && !strings.Contains(v, "://") {
+				t.Errorf("%s = %q in %v: paths are recorded in full", key, v, r["msg"])
+			}
+		}
 	}
 }

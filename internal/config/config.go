@@ -399,7 +399,13 @@ func Load(path string) (*Config, error) {
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, fmt.Errorf("decode config %s: %w", path, err)
 	}
-	c.SourceFile = path
+	// Stored absolute: the log has to identify the file long after whatever
+	// working directory the command was run from is forgotten.
+	if abs, err := filepath.Abs(path); err == nil {
+		c.SourceFile = abs
+	} else {
+		c.SourceFile = path
+	}
 
 	if c.Name == "" {
 		base := filepath.Base(path)

@@ -191,7 +191,23 @@ goft send >/dev/null     # just the JSON log
 ```
 
 Every verified transfer records `hash_src` and `hash_dst` at info level, so the
-log is enough on its own to show that a file arrived intact.
+log is enough on its own to show that a file arrived intact. Both ends are
+recorded in full — `/data/out/invoice/a.csv` and
+`sftp://host/upload/invoice/a.csv` — because a path relative to a root the
+reader cannot see identifies nothing.
+
+Each run opens with the settings it is about to use, defaults included, so a
+log kept for auditing answers "what moved this file, and how" on its own:
+
+```json
+{"msg":"starting","event":"lifecycle","config":{"file":"/etc/goft/invoice.yaml",
+ "local":{"path":"/data/out/invoice"},
+ "remote":{"protocol":"sftp","host":"invoice-sftp","path":"/upload/invoice",
+           "user":"uploader","password":"REDACTED"},
+ "verify":"hash","on_exists":"skip","post_action":"move", ...}}
+```
+
+Passwords and passphrases are reported as set, never as their value.
 
 The level decides which records are written; `log.fields` decides what each
 transfer record carries:

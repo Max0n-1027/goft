@@ -137,7 +137,19 @@ goft send 2>/dev/null    # 人間可読な出力だけ
 goft send >/dev/null     # JSON ログだけ
 ```
 
-検証を通った転送では `hash_src` と `hash_dst` が info レベルで記録されるので、ログだけでファイルが無傷で届いたことを確認できます。
+検証を通った転送では `hash_src` と `hash_dst` が info レベルで記録されるので、ログだけでファイルが無傷で届いたことを確認できます。パスは両端ともフルパスで記録されます（`/data/out/invoice/a.csv` と `sftp://host/upload/invoice/a.csv`）。読み手が知らないルートからの相対パスでは、どのファイルか特定できないためです。
+
+実行のたびに、使用した設定が既定値も含めて記録されます。監査用にログを保管しておけば、後から「どの設定でこのファイルを転送したか」がログだけで分かります。
+
+```json
+{"msg":"starting","event":"lifecycle","config":{"file":"/etc/goft/invoice.yaml",
+ "local":{"path":"/data/out/invoice"},
+ "remote":{"protocol":"sftp","host":"invoice-sftp","path":"/upload/invoice",
+           "user":"uploader","password":"REDACTED"},
+ "verify":"hash","on_exists":"skip","post_action":"move", ...}}
+```
+
+パスワードとパスフレーズは「設定されている」ことだけが記録され、値は出力されません。
 
 **どのレコードを書くかはレベルが、各転送レコードに何を書くかは `log.fields` が決めます。**
 

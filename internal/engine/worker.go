@@ -60,7 +60,7 @@ func (e *Engine) pause(ctx context.Context, attempt int, path string, cause erro
 	wait := e.cfg.Retry.Wait(attempt)
 	e.log.Warn("retrying transfer",
 		logging.KeyEvent, logging.EventTransfer,
-		logging.KeySrc, path,
+		logging.KeySrc, e.source(path),
 		logging.KeyAttempt, attempt+1,
 		"of", e.cfg.Retry.MaxAttempts,
 		"retry_in_ms", wait.Milliseconds(),
@@ -260,7 +260,7 @@ func (e *Engine) discard(ctx context.Context, dst fsys.FS, tmp string) {
 	if err := dst.Remove(ctx, tmp); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		e.log.Warn("could not remove temporary file",
 			logging.KeyEvent, logging.EventTransfer,
-			logging.KeyDst, tmp, logging.KeyError, err.Error())
+			logging.KeyDst, e.destination(tmp), logging.KeyError, err.Error())
 	}
 }
 
@@ -274,7 +274,7 @@ func (e *Engine) step(ctx context.Context, name, stage string, fn func() error) 
 	attrs := []any{
 		logging.KeyEvent, logging.EventTransfer,
 		logging.KeyStep, stage,
-		logging.KeySrc, name,
+		logging.KeySrc, e.source(name),
 		logging.KeyDurationMS, e.now().Sub(t0).Milliseconds(),
 	}
 	if err != nil {
@@ -304,7 +304,7 @@ func (e *Engine) report(ctx context.Context, c *Collector, r Result) {
 		}
 	}
 
-	add(logging.KeySrc, r.Path)
+	add(logging.KeySrc, e.source(r.Path))
 	add(logging.KeyDst, e.destination(r.Path))
 	add(logging.KeyProtocol, string(e.cfg.Remote.Protocol))
 	add(logging.KeyBytes, r.Bytes)
@@ -334,8 +334,18 @@ func (e *Engine) report(ctx context.Context, c *Collector, r Result) {
 	}
 }
 
-// destination renders where the file was written, which is the remote location
-// for a send and a local path for a recv.
+// source and destination render a file's two ends in full.
+//
+// The engine works in paths relative to each root, which is what keeps it
+// direction agnostic, but a log read weeks later has to say which file on which
+// machine, so the records carry the whole location.
+func (e *Engine) source(rel string) string {
+	if e.opts.Direction == config.DirRecv {
+		return e.cfg.Remote.Describe() + "/" + rel
+	}
+	return filepath.Join(e.cfg.Local.Path, filepath.FromSlash(rel))
+}
+
 func (e *Engine) destination(rel string) string {
 	if e.opts.Direction == config.DirRecv {
 		return filepath.Join(e.cfg.Local.Path, filepath.FromSlash(rel))

@@ -252,6 +252,17 @@ func reportResolution(log *slog.Logger, remote config.Remote) error {
 	return nil
 }
 
+// logConfiguration records the settings the run is about to use.
+//
+// It is written once, at info level, so that a log kept for auditing answers
+// "what settings moved this file" on its own, months later, without the
+// configuration file having to still exist in that form.
+func (j *job) logConfiguration() {
+	j.log.Info("starting",
+		logging.KeyEvent, logging.EventLifecycle,
+		"config", j.cfg)
+}
+
 func (j *job) close() {
 	if j.closeLog != nil {
 		_ = j.closeLog.Close()
@@ -266,7 +277,7 @@ func runOnce(ctx context.Context, dir config.Direction, dryRun bool) error {
 	}
 	defer j.close()
 
-	j.log.Info("starting", logging.KeyEvent, logging.EventLifecycle, "config", j.cfg.SourceFile)
+	j.logConfiguration()
 	summary, err := j.engine.RunOnce(ctx)
 	if err != nil {
 		j.log.Error("run failed", logging.KeyEvent, logging.EventLifecycle, logging.KeyError, err.Error())
@@ -293,10 +304,7 @@ func runServe(ctx context.Context, dir config.Direction, dryRun bool) error {
 	}
 	defer j.close()
 
-	j.log.Info("starting",
-		logging.KeyEvent, logging.EventLifecycle,
-		"config", j.cfg.SourceFile,
-		"poll_interval", j.cfg.PollInterval.String())
+	j.logConfiguration()
 	if err := j.engine.Serve(ctx); err != nil {
 		return startupError(err)
 	}
