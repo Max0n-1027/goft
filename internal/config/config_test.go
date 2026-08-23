@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -124,17 +125,19 @@ func TestValidateForDirectionRejectsMoveOnRecv(t *testing.T) {
 	}
 }
 
-func TestValidateRequiresSMBCredentials(t *testing.T) {
+func TestValidateRequiresTheSMBShare(t *testing.T) {
 	cfg := validConfig(t.TempDir())
 	cfg.Remote.Protocol = ProtocolSMB
 
 	err := Validate(cfg)
-	if err == nil {
-		t.Fatal("smb reads no default credential file, so user, password and share are required up front")
+	if err == nil || !strings.Contains(err.Error(), "share") {
+		t.Fatalf("Validate() = %v, want the missing share reported", err)
 	}
-	for _, want := range []string{"share", "user", "password"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q does not mention %s", err, want)
+	// The credentials are not required here: a Credential Manager entry may
+	// supply them, which is only known once the connection is resolved.
+	for _, notWanted := range []string{"remote.user is required", "remote.password is required"} {
+		if strings.Contains(fmt.Sprint(err), notWanted) {
+			t.Errorf("error %q rejects credentials that a store could still provide", err)
 		}
 	}
 }

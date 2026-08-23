@@ -183,6 +183,7 @@ func resolveFTP(r config.Remote) (*Resolved, error) {
 		res.record("password", r.Password.String(), SourceYAML)
 	}
 
+	applyCredential(res, r)
 	if (res.User != "" && res.Password.IsSet()) || !r.NetrcEnabled() {
 		return res, nil
 	}

@@ -165,6 +165,7 @@ func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
 		res.record("password", r.Password.String(), SourceYAML)
 	}
 	res.Passphrase = r.PrivateKeyPassphrase
+	applyCredential(res, r)
 
 	switch keys := look.all("IdentityFile"); {
 	case r.PrivateKey != "":

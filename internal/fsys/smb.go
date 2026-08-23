@@ -26,10 +26,12 @@ type smbFS struct {
 
 // resolveSMB reports the connection parameters for an SMB share.
 //
-// SMB reads no default credential file: the ones Windows keeps for network
-// shares are domain credentials, whose password cannot be read back, so there
-// is nothing to consult. Credentials come from the job configuration, where
-// ${ENV} expansion keeps them out of the file itself.
+// SMB has no credential file of its own to fall back on. The ones Windows keeps
+// for network shares are domain credentials, whose password the platform
+// reserves for the authentication packages, so they cannot be reused however
+// convenient that would be. Credentials come from the job configuration, from
+// ${ENV} expansion, or from a generic Credential Manager entry registered for
+// goft.
 func resolveSMB(r config.Remote) (*Resolved, error) {
 	res := &Resolved{Host: r.Host, Port: r.Port, User: r.User, Password: r.Password}
 	res.record("host", r.Host, SourceYAML)
@@ -39,10 +41,13 @@ func resolveSMB(r config.Remote) (*Resolved, error) {
 		res.Port = 445
 		res.record("port", "445", SourceDefault)
 	}
-	res.record("user", r.User, SourceYAML)
+	if r.User != "" {
+		res.record("user", r.User, SourceYAML)
+	}
 	if r.Password.IsSet() {
 		res.record("password", r.Password.String(), SourceYAML)
 	}
+	applyCredential(res, r)
 	res.record("share", r.Share, SourceYAML)
 	if r.Domain != "" {
 		res.record("domain", r.Domain, SourceYAML)
@@ -54,6 +59,11 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	res, err := resolveSMB(r)
 	if err != nil {
 		return nil, err
+	}
+	// Checked here rather than during validation, because a Credential Manager
+	// entry may supply them and that is only known once resolved.
+	if res.User == "" || !res.Password.IsSet() {
+		return nil, fmt.Errorf("no smb credentials for %s: set remote.user and remote.password, or register %q with cmdkey", r.Host, credentialTarget(r))
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))

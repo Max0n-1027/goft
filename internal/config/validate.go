@@ -97,16 +97,9 @@ func validateRemote(c *Config, add addFunc) {
 	case !oneOf(c.Remote.Protocol, protocols...):
 		add("remote.protocol %q is invalid (%s)", c.Remote.Protocol, quoted(protocols))
 	case c.Remote.Protocol == ProtocolSMB:
-		// SMB reads no default credential file, so unlike ftp and sftp there is
-		// nothing that could still supply these later.
+		// The share is the one thing no credential store can supply.
 		if c.Remote.Share == "" {
 			add("remote.share is required for protocol smb")
-		}
-		if c.Remote.User == "" {
-			add("remote.user is required for protocol smb")
-		}
-		if !c.Remote.Password.IsSet() {
-			add("remote.password is required for protocol smb")
 		}
 	}
 }

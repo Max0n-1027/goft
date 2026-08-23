@@ -67,7 +67,17 @@ Nothing needs to be written in plain text:
   `HostName`, `Port`, `User`, `IdentityFile` and `UserKnownHostsFile`.
 - **ftp** fills in `user` and `password` from `~/.netrc`, or
   `%USERPROFILE%\.netrc` on Windows.
-- **smb** reads no default file; give it `user`, `password` and `share`.
+- **smb** has no file of its own; give it `user`, `password` and `share`.
+- On **Windows**, a generic Credential Manager entry registered for goft fills
+  in `user` and `password` for any protocol:
+
+  ```
+  cmdkey /generic:goft:smb://fileserver /user:svc-transfer /pass:secret
+  ```
+
+  The credentials Windows keeps for network shares are a different kind, and
+  the platform reserves them for its own authentication packages, so a share
+  that Explorer or `net use` remembered cannot be reused here.
 
 What the configuration file states always wins over a default file. Run
 `goft test` to see the values that were resolved and where each one came from.

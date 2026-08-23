@@ -97,10 +97,10 @@ type Local struct {
 
 // Remote describes the server side of a job, including its credentials.
 //
-// Anything left out may be filled in from a file the protocol already has a
-// convention for: ~/.ssh/config for sftp and ~/.netrc for ftp. What is set here
-// always wins over those. SMB reads no such file, because the credentials
-// Windows stores for network shares cannot be read back.
+// Anything left out may be filled in from somewhere the platform already keeps
+// it: ~/.ssh/config for sftp, ~/.netrc for ftp, and on Windows a generic
+// Credential Manager entry registered for goft, whatever the protocol. What is
+// set here always wins over all of them.
 type Remote struct {
 	// Protocol is ftp, sftp or smb.
 	Protocol Protocol `mapstructure:"protocol"`
@@ -133,6 +133,13 @@ type Remote struct {
 	UseNetrc  *bool  `mapstructure:"use_netrc"`
 	NetrcFile string `mapstructure:"netrc_file"`
 
+	// UseCredentialManager turns off the Windows Credential Manager lookup,
+	// and CredentialTarget names the entry to read instead of the default
+	// goft:<protocol>://<host>. Nil means enabled, and the lookup finds
+	// nothing on other platforms.
+	UseCredentialManager *bool  `mapstructure:"use_credential_manager"`
+	CredentialTarget     string `mapstructure:"credential_target"`
+
 	// Share is the smb share to mount, and Domain the NTLM domain.
 	Share  string `mapstructure:"share"`
 	Domain string `mapstructure:"domain"`
@@ -157,6 +164,12 @@ func (r Remote) SSHConfigEnabled() bool { return r.UseSSHConfig == nil || *r.Use
 
 // NetrcEnabled reports whether ~/.netrc should be consulted.
 func (r Remote) NetrcEnabled() bool { return r.UseNetrc == nil || *r.UseNetrc }
+
+// CredentialManagerEnabled reports whether the Windows Credential Manager
+// should be consulted.
+func (r Remote) CredentialManagerEnabled() bool {
+	return r.UseCredentialManager == nil || *r.UseCredentialManager
+}
 
 // Retry controls how often a failed file is attempted again within one cycle.
 //
