@@ -159,7 +159,7 @@ func (s *smbFS) MkdirAll(_ context.Context, dir string) error {
 		return nil
 	}
 	var built string
-	for _, part := range splitPath(path.Join(s.root, dir)) {
+	for _, part := range Segments(path.Join(s.root, dir)) {
 		built = path.Join(built, part)
 		if err := s.share.Mkdir(built, 0o755); err != nil && !os.IsExist(err) {
 			if _, statErr := s.share.Stat(built); statErr != nil {

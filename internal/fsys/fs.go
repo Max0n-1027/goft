@@ -112,6 +112,18 @@ func Join(elems ...string) string {
 	return path.Join(parts...)
 }
 
+// Segments splits a rooted relative path into its parts, dropping empty ones.
+// Protocols that can only create one directory at a time walk it.
+func Segments(p string) []string {
+	var out []string
+	for _, part := range strings.Split(p, "/") {
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}
+
 // Dir returns the parent of a rooted relative path, "" for top level entries.
 func Dir(name string) string {
 	d := path.Dir(name)

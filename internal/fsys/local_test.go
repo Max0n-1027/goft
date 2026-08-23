@@ -115,3 +115,19 @@ func errorsIs(err, target error) bool {
 	}
 	return false
 }
+
+func TestSegments(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want int
+	}{
+		{"", 0},
+		{"a", 1},
+		{"2026/08/week3", 3},
+		{"/leading/and/trailing/", 3},
+	} {
+		if got := Segments(tc.in); len(got) != tc.want {
+			t.Errorf("Segments(%q) = %v, want %d parts", tc.in, got, tc.want)
+		}
+	}
+}

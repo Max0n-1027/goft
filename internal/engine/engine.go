@@ -186,35 +186,67 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		return Summary{}, err
 	}
 	srcOpen = false
-	conns := []*conn{{e: e, src: src, dst: dst}}
+
+	conns, err := e.openConnections(ctx, src, dst, len(targets))
 	defer func() {
 		for _, c := range conns {
 			c.close()
 		}
 	}()
+	if err != nil {
+		return Summary{}, err
+	}
 
 	idx, err := buildDestIndex(ctx, dst, targetDirs(targets))
 	if err != nil {
 		return Summary{}, err
 	}
 
-	workers := e.cfg.Workers
-	if workers > len(targets) {
-		workers = len(targets)
+	s, err := e.dispatch(ctx, conns, targets, idx)
+	if err != nil {
+		return s, err
 	}
+	s.Elapsed = e.now().Sub(start)
+	e.log.Info("cycle complete",
+		logging.KeyEvent, logging.EventSummary,
+		"files", s.Total, "succeeded", s.Succeeded, "skipped", s.Skipped, "failed", s.Failed,
+		logging.KeyBytes, s.Bytes, logging.KeyDurationMS, s.Elapsed.Milliseconds())
+	if e.opts.OnSummary != nil {
+		e.opts.OnSummary(s)
+	}
+	return s, nil
+}
+
+// openConnections gives each worker its own pair, reusing the two the cycle
+// already holds for scanning and for the destination listing.
+//
+// There is no point in more workers than files, and the count is what bounds
+// how many connections a cycle holds open at once.
+func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets int) ([]*conn, error) {
+	workers := min(e.cfg.Workers, targets)
+	conns := []*conn{{e: e, src: src, dst: dst}}
+
 	for i := 1; i < workers; i++ {
 		s, err := e.opts.NewSrc(ctx)
 		if err != nil {
-			return Summary{}, err
+			return conns, err
 		}
 		d, err := e.opts.NewDst(ctx)
 		if err != nil {
 			_ = s.Close()
-			return Summary{}, err
+			return conns, err
 		}
 		conns = append(conns, &conn{e: e, src: s, dst: d})
 	}
+	return conns, nil
+}
 
+// dispatch hands the targets to the workers and waits for them to finish.
+//
+// A file that fails is reported rather than returned, so one bad file does not
+// end the cycle; only a cancelled run or a connection that could not be rebuilt
+// comes back as an error.
+func (e *Engine) dispatch(ctx context.Context, conns []*conn, targets []target, idx *destIndex) (Summary, error) {
 	collector := &Collector{}
 	jobs := make(chan target)
 
@@ -243,20 +275,8 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		})
 	}
 
-	if err := g.Wait(); err != nil {
-		return collector.Summary(), err
-	}
-
-	s := collector.Summary()
-	s.Elapsed = e.now().Sub(start)
-	e.log.Info("cycle complete",
-		logging.KeyEvent, logging.EventSummary,
-		"files", s.Total, "succeeded", s.Succeeded, "skipped", s.Skipped, "failed", s.Failed,
-		logging.KeyBytes, s.Bytes, logging.KeyDurationMS, s.Elapsed.Milliseconds())
-	if e.opts.OnSummary != nil {
-		e.opts.OnSummary(s)
-	}
-	return s, nil
+	err := g.Wait()
+	return collector.Summary(), err
 }
 
 // conn is one worker's pair of connections, which it can rebuild.

@@ -89,32 +89,57 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 	res := &Resolved{Host: r.Host, SkipHostKey: r.InsecureSkipHostKeyCheck}
 	home, _ := os.UserHomeDir()
 
-	// HostName
+	resolveHost(res, r, look)
+	if err := resolvePort(res, r, look); err != nil {
+		return nil, err
+	}
+	resolveUser(res, r, look)
+	resolveAuth(res, r, look, home)
+	resolveKnownHosts(res, r, look, home)
+	resolveHostKeyPolicy(res, look)
+
+	for _, key := range []string{"ProxyJump", "ProxyCommand"} {
+		if v, ok := look.get(key); ok {
+			res.Warnings = append(res.Warnings,
+				fmt.Sprintf("ssh_config %s %q is not supported; connecting directly", key, v))
+		}
+	}
+
+	return res, nil
+}
+
+func resolveHost(res *Resolved, r config.Remote, look sshLookup) {
 	if v, ok := look.get("HostName"); ok {
 		res.Host = v
 		res.record("host", v, SourceSSHConfig)
-	} else {
-		res.record("host", r.Host, SourceYAML)
+		return
 	}
+	res.record("host", r.Host, SourceYAML)
+}
 
-	// Port
-	switch v, ok := look.get("Port"); {
-	case r.Port != 0:
+func resolvePort(res *Resolved, r config.Remote, look sshLookup) error {
+	// A port of zero is not a port, so a non-zero value is exactly the same
+	// test as "was it configured".
+	if r.Port != 0 {
 		res.Port = r.Port
 		res.record("port", strconv.Itoa(res.Port), SourceYAML)
-	case ok:
+		return nil
+	}
+	if v, ok := look.get("Port"); ok {
 		p, err := strconv.Atoi(strings.TrimSpace(v))
 		if err != nil {
-			return nil, fmt.Errorf("ssh_config Port %q: %w", v, err)
+			return fmt.Errorf("ssh_config Port %q: %w", v, err)
 		}
 		res.Port = p
 		res.record("port", v, SourceSSHConfig)
-	default:
-		res.Port = 22
-		res.record("port", "22", SourceDefault)
+		return nil
 	}
+	res.Port = 22
+	res.record("port", "22", SourceDefault)
+	return nil
+}
 
-	// User
+func resolveUser(res *Resolved, r config.Remote, look sshLookup) {
 	switch v, ok := look.get("User"); {
 	case r.User != "":
 		res.User = r.User
@@ -128,42 +153,50 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 		}
 		res.record("user", res.User, SourceDefault)
 	}
+}
 
+// resolveAuth settles the password and the identities to offer.
+//
+// Identity files are filtered by existence, because ssh_config commonly names
+// several and only some of them are on any given machine.
+func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
 	res.Password = r.Password
 	if r.Password.IsSet() {
 		res.record("password", r.Password.String(), SourceYAML)
 	}
 	res.Passphrase = r.PrivateKeyPassphrase
 
-	// Identity files
 	switch keys := look.all("IdentityFile"); {
 	case r.PrivateKey != "":
 		res.KeyFiles = []string{expandTokens(r.PrivateKey, res.Host, res.User, home)}
 		res.record("private_key", res.KeyFiles[0], SourceYAML)
+		return
 	case len(keys) > 0:
 		for _, k := range keys {
-			p := expandTokens(k, res.Host, res.User, home)
-			if _, err := os.Stat(p); err == nil {
+			if p := expandTokens(k, res.Host, res.User, home); exists(p) {
 				res.KeyFiles = append(res.KeyFiles, p)
 			}
 		}
 		if len(res.KeyFiles) > 0 {
 			res.record("private_key", strings.Join(res.KeyFiles, ", "), SourceSSHConfig)
-		}
-	}
-	if len(res.KeyFiles) == 0 && home != "" {
-		for _, name := range []string{"id_ed25519", "id_rsa"} {
-			p := filepath.Join(home, ".ssh", name)
-			if _, err := os.Stat(p); err == nil {
-				res.KeyFiles = append(res.KeyFiles, p)
-			}
-		}
-		if len(res.KeyFiles) > 0 {
-			res.record("private_key", strings.Join(res.KeyFiles, ", "), SourceDefault)
+			return
 		}
 	}
 
-	// known_hosts
+	if home == "" {
+		return
+	}
+	for _, name := range []string{"id_ed25519", "id_rsa"} {
+		if p := filepath.Join(home, ".ssh", name); exists(p) {
+			res.KeyFiles = append(res.KeyFiles, p)
+		}
+	}
+	if len(res.KeyFiles) > 0 {
+		res.record("private_key", strings.Join(res.KeyFiles, ", "), SourceDefault)
+	}
+}
+
+func resolveKnownHosts(res *Resolved, r config.Remote, look sshLookup, home string) {
 	switch v, ok := look.get("UserKnownHostsFile"); {
 	case r.KnownHosts != "":
 		res.KnownHosts = expandTokens(r.KnownHosts, res.Host, res.User, home)
@@ -171,8 +204,7 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 	case ok:
 		// The directive may name several files; the first usable one wins.
 		for _, f := range strings.Fields(v) {
-			p := expandTokens(f, res.Host, res.User, home)
-			if _, err := os.Stat(p); err == nil {
+			if p := expandTokens(f, res.Host, res.User, home); exists(p) {
 				res.KnownHosts = p
 				break
 			}
@@ -186,29 +218,27 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 			res.record("known_hosts", res.KnownHosts, SourceDefault)
 		}
 	}
+}
 
-	// StrictHostKeyChecking is honoured, because a job that names a host alias
-	// is asking for that alias's settings. Relaxing verification is never
-	// silent, though.
-	if v, ok := look.get("StrictHostKeyChecking"); ok {
-		switch strings.ToLower(strings.TrimSpace(v)) {
-		case "no", "off", "accept-new":
-			if !res.SkipHostKey {
-				res.SkipHostKey = true
-				res.Warnings = append(res.Warnings,
-					fmt.Sprintf("ssh_config sets StrictHostKeyChecking %s: the host key will not be verified", v))
-			}
-		}
+// resolveHostKeyPolicy honours the alias's own setting, because a job naming an
+// alias is asking for that alias's configuration. Relaxing verification is
+// never silent.
+func resolveHostKeyPolicy(res *Resolved, look sshLookup) {
+	v, ok := look.get("StrictHostKeyChecking")
+	if !ok || res.SkipHostKey {
+		return
 	}
-
-	for _, key := range []string{"ProxyJump", "ProxyCommand"} {
-		if v, ok := look.get(key); ok {
-			res.Warnings = append(res.Warnings,
-				fmt.Sprintf("ssh_config %s %q is not supported; connecting directly", key, v))
-		}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "no", "off", "accept-new":
+		res.SkipHostKey = true
+		res.Warnings = append(res.Warnings,
+			fmt.Sprintf("ssh_config sets StrictHostKeyChecking %s: the host key will not be verified", v))
 	}
+}
 
-	return res, nil
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // expandTokens resolves the parts of an ssh_config path that the parser leaves

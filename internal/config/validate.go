@@ -55,27 +55,50 @@ func Validate(c *Config) error {
 		errs = append(errs, fmt.Errorf(format, args...))
 	}
 
-	if c.Local.Path == "" {
+	validateLocal(c, add)
+	validateRemote(c, add)
+	validateTransfer(c, add)
+	validateScanning(c, add)
+	validateLog(c, add)
+
+	return errors.Join(errs...)
+}
+
+// addFunc collects one problem. Every check takes it so that a configuration
+// with several mistakes reports all of them at once.
+type addFunc func(format string, args ...any)
+
+func validateLocal(c *Config, add addFunc) {
+	switch fi, err := os.Stat(c.Local.Path); {
+	case c.Local.Path == "":
 		add("local.path is required")
-	} else if fi, err := os.Stat(c.Local.Path); err != nil {
+	case err != nil:
 		add("local.path %q: %v", c.Local.Path, err)
-	} else if !fi.IsDir() {
+	case !fi.IsDir():
 		add("local.path %q is not a directory", c.Local.Path)
 	}
+}
 
+func validateRemote(c *Config, add addFunc) {
 	if c.Remote.Host == "" {
 		add("remote.host is required")
 	}
 	if c.Remote.Path == "" {
 		add("remote.path is required")
 	}
+	if c.Remote.Port < 0 || c.Remote.Port > 65535 {
+		add("remote.port %d is out of range", c.Remote.Port)
+	}
+
+	protocols := []Protocol{ProtocolFTP, ProtocolSFTP, ProtocolSMB}
 	switch {
 	case c.Remote.Protocol == "":
-		add("remote.protocol is required (%s)", quoted([]Protocol{ProtocolFTP, ProtocolSFTP, ProtocolSMB}))
-	case !oneOf(c.Remote.Protocol, ProtocolFTP, ProtocolSFTP, ProtocolSMB):
-		add("remote.protocol %q is invalid (%s)", c.Remote.Protocol, quoted([]Protocol{ProtocolFTP, ProtocolSFTP, ProtocolSMB}))
+		add("remote.protocol is required (%s)", quoted(protocols))
+	case !oneOf(c.Remote.Protocol, protocols...):
+		add("remote.protocol %q is invalid (%s)", c.Remote.Protocol, quoted(protocols))
 	case c.Remote.Protocol == ProtocolSMB:
-		// SMB reads no default credential file, so this can be required here.
+		// SMB reads no default credential file, so unlike ftp and sftp there is
+		// nothing that could still supply these later.
 		if c.Remote.Share == "" {
 			add("remote.share is required for protocol smb")
 		}
@@ -86,10 +109,9 @@ func Validate(c *Config) error {
 			add("remote.password is required for protocol smb")
 		}
 	}
-	if c.Remote.Port < 0 || c.Remote.Port > 65535 {
-		add("remote.port %d is out of range", c.Remote.Port)
-	}
+}
 
+func validateTransfer(c *Config, add addFunc) {
 	if !oneOf(c.Verify, VerifyHash, VerifyLength, VerifyNone) {
 		add("verify %q is invalid (%s)", c.Verify, quoted([]Verify{VerifyHash, VerifyLength, VerifyNone}))
 	}
@@ -99,31 +121,31 @@ func Validate(c *Config) error {
 	if !oneOf(c.PostAction, PostNone, PostDelete, PostMove) {
 		add("post_action %q is invalid (%s)", c.PostAction, quoted([]PostAction{PostNone, PostDelete, PostMove}))
 	}
-	if !oneOf(c.Log.Rotation, RotationSize, RotationDaily, RotationMonthly) {
-		add("log.rotation %q is invalid (%s)", c.Log.Rotation, quoted([]Rotation{RotationSize, RotationDaily, RotationMonthly}))
-	}
-	if _, err := ParseLevel(c.Log.Level); err != nil {
-		add("log.level: %v", err)
-	}
-	for _, f := range c.Log.Fields {
-		if !oneOf(strings.ToLower(strings.TrimSpace(f)), SelectableLogFields...) {
-			add("log.fields: %q is not a field (%s)", f, strings.Join(SelectableLogFields, " | "))
-		}
-	}
 
 	if c.PostAction == PostMove {
-		switch {
+		switch inside, err := isInside(c.Local.Path, c.MoveTo); {
 		case c.MoveTo == "":
 			add("move_to is required when post_action is move")
-		default:
-			if inside, err := isInside(c.Local.Path, c.MoveTo); err != nil {
-				add("move_to %q: %v", c.MoveTo, err)
-			} else if inside {
-				add("move_to %q must not be inside local.path %q: moved files would be picked up again on the next cycle", c.MoveTo, c.Local.Path)
-			}
+		case err != nil:
+			add("move_to %q: %v", c.MoveTo, err)
+		case inside:
+			add("move_to %q must not be inside local.path %q: moved files would be picked up again on the next cycle",
+				c.MoveTo, c.Local.Path)
 		}
 	}
 
+	if c.Retry.MaxAttempts < 1 {
+		add("retry.max_attempts must be >= 1 (1 disables retrying)")
+	}
+	if c.Retry.Interval < 0 {
+		add("retry.interval must be >= 0")
+	}
+	if c.Retry.Backoff < 1 {
+		add("retry.backoff must be >= 1")
+	}
+}
+
+func validateScanning(c *Config, add addFunc) {
 	if c.MaxFileSizeMB < 0 {
 		add("max_file_size_mb must be >= 0")
 	}
@@ -136,17 +158,20 @@ func Validate(c *Config) error {
 	if c.StableDuration < 0 {
 		add("stable_duration must be >= 0")
 	}
-	if c.Retry.MaxAttempts < 1 {
-		add("retry.max_attempts must be >= 1 (1 disables retrying)")
-	}
-	if c.Retry.Interval < 0 {
-		add("retry.interval must be >= 0")
-	}
-	if c.Retry.Backoff < 1 {
-		add("retry.backoff must be >= 1")
-	}
+}
 
-	return errors.Join(errs...)
+func validateLog(c *Config, add addFunc) {
+	if !oneOf(c.Log.Rotation, RotationSize, RotationDaily, RotationMonthly) {
+		add("log.rotation %q is invalid (%s)", c.Log.Rotation, quoted([]Rotation{RotationSize, RotationDaily, RotationMonthly}))
+	}
+	if _, err := ParseLevel(c.Log.Level); err != nil {
+		add("log.level: %v", err)
+	}
+	for _, f := range c.Log.Fields {
+		if !oneOf(strings.ToLower(strings.TrimSpace(f)), SelectableLogFields...) {
+			add("log.fields: %q is not a field (%s)", f, strings.Join(SelectableLogFields, " | "))
+		}
+	}
 }
 
 // ValidateForDirection checks the combinations that only make sense once the

@@ -101,58 +101,25 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		return fail(err)
 	}
 
-	// Existing destination file: the answer comes from the listing taken at the
-	// start of the cycle, not from a per-file Stat.
-	if dstSize, exists := idx.lookup(dir, base); exists {
-		if e.cfg.OnExists == config.OnExistsSkip {
-			res.Outcome, res.Reason = Skipped, ReasonAlreadyExists
-			return finish(res)
-		}
-		var identical bool
-		err := e.step(ctx, name, "compare", func() error {
-			var err error
-			identical, err = verify.Identical(ctx, e.cfg.Verify, c.src, name, t.file.Size, c.dst, name, dstSize)
-			return err
-		})
-		if err != nil {
+	switch decision, err := e.decideExisting(ctx, c, t, idx, dir, base); {
+	case err != nil:
+		return fail(err)
+	case decision == skipExisting:
+		res.Outcome, res.Reason = Skipped, ReasonAlreadyExists
+		return finish(res)
+	case decision == skipIdentical:
+		// Already there and byte for byte the same, so the transfer is complete
+		// as far as the source is concerned.
+		if err := e.postAction(ctx, c, name); err != nil {
+			res.postActionFailed = true
 			return fail(err)
 		}
-		if identical {
-			// Already there and byte for byte the same, so the transfer is
-			// complete as far as the source is concerned.
-			if err := e.postAction(ctx, c, name); err != nil {
-				res.postActionFailed = true
-				return fail(err)
-			}
-			res.Outcome, res.Reason = Skipped, ReasonIdentical
-			return finish(res)
-		}
+		res.Outcome, res.Reason = Skipped, ReasonIdentical
+		return finish(res)
 	}
 
 	tmp := fsys.TempName(name)
-	var (
-		sent    int64
-		srcHash uint64
-	)
-	err := e.step(ctx, name, "write", func() error {
-		rc, err := c.src.Open(ctx, name)
-		if err != nil {
-			return err
-		}
-		defer rc.Close()
-
-		var reader io.Reader = rc
-		digest := xxhash.New()
-		if e.cfg.Verify == config.VerifyHash {
-			// The digest must come from the bytes actually streamed to the
-			// destination. Reusing a hash computed during the comparison above
-			// would verify what was read then, not what was sent now.
-			reader = io.TeeReader(rc, digest)
-		}
-		sent, err = c.dst.Write(ctx, tmp, reader)
-		srcHash = digest.Sum64()
-		return err
-	})
+	sent, srcHash, err := e.upload(ctx, c, name, tmp)
 	if err != nil {
 		e.discard(ctx, c.dst, tmp)
 		return fail(err)
@@ -194,6 +161,76 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 
 	res.Outcome = Success
 	return finish(res)
+}
+
+// existingDecision is what to do about a destination file that is already
+// there.
+type existingDecision int
+
+const (
+	// proceed means transfer the file: either nothing is in the way, or what is
+	// there differs from the source.
+	proceed existingDecision = iota
+	// skipExisting leaves an existing file alone without looking at it.
+	skipExisting
+	// skipIdentical means the destination already holds these bytes.
+	skipIdentical
+)
+
+// decideExisting settles what to do about a name that is already taken.
+//
+// The answer comes from the listing taken at the start of the cycle rather than
+// from a Stat per file, which is what keeps a directory of already-transferred
+// files from costing a round trip each on every pass.
+func (e *Engine) decideExisting(ctx context.Context, c *conn, t target, idx *destIndex, dir, base string) (existingDecision, error) {
+	dstSize, exists := idx.lookup(dir, base)
+	if !exists {
+		return proceed, nil
+	}
+	if e.cfg.OnExists == config.OnExistsSkip {
+		return skipExisting, nil
+	}
+
+	name := t.file.Path
+	var identical bool
+	err := e.step(ctx, name, "compare", func() error {
+		var err error
+		identical, err = verify.Identical(ctx, e.cfg.Verify, c.src, name, t.file.Size, c.dst, name, dstSize)
+		return err
+	})
+	switch {
+	case err != nil:
+		return proceed, err
+	case identical:
+		return skipIdentical, nil
+	default:
+		return proceed, nil
+	}
+}
+
+// upload streams the file to its temporary name, hashing what it sends.
+//
+// The digest has to come from the bytes actually streamed. Reusing one computed
+// while comparing against an existing file would verify what was read then, not
+// what was sent now.
+func (e *Engine) upload(ctx context.Context, c *conn, name, tmp string) (sent int64, srcHash uint64, err error) {
+	err = e.step(ctx, name, "write", func() error {
+		rc, err := c.src.Open(ctx, name)
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+
+		var reader io.Reader = rc
+		digest := xxhash.New()
+		if e.cfg.Verify == config.VerifyHash {
+			reader = io.TeeReader(rc, digest)
+		}
+		sent, err = c.dst.Write(ctx, tmp, reader)
+		srcHash = digest.Sum64()
+		return err
+	})
+	return sent, srcHash, err
 }
 
 // publish moves the verified temporary file onto its final name.
@@ -341,15 +378,23 @@ func (e *Engine) report(ctx context.Context, c *Collector, r Result) {
 // machine, so the records carry the whole location.
 func (e *Engine) source(rel string) string {
 	if e.opts.Direction == config.DirRecv {
-		return e.cfg.Remote.Describe() + "/" + rel
+		return e.remotePath(rel)
 	}
-	return filepath.Join(e.cfg.Local.Path, filepath.FromSlash(rel))
+	return e.localPath(rel)
 }
 
 func (e *Engine) destination(rel string) string {
 	if e.opts.Direction == config.DirRecv {
-		return filepath.Join(e.cfg.Local.Path, filepath.FromSlash(rel))
+		return e.localPath(rel)
 	}
+	return e.remotePath(rel)
+}
+
+func (e *Engine) localPath(rel string) string {
+	return filepath.Join(e.cfg.Local.Path, filepath.FromSlash(rel))
+}
+
+func (e *Engine) remotePath(rel string) string {
 	return e.cfg.Remote.Describe() + "/" + rel
 }
 

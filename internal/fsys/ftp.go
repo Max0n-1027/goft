@@ -182,7 +182,7 @@ func (f *ftpFS) MkdirAll(ctx context.Context, dir string) error {
 		return nil
 	}
 	var built string
-	for _, part := range splitPath(dir) {
+	for _, part := range Segments(dir) {
 		built = path.Join(built, part)
 		if err := f.conn.MakeDir(f.abs(built)); err != nil {
 			if _, statErr := f.conn.List(f.abs(built)); statErr != nil {
@@ -228,28 +228,6 @@ func (c *countingReader) Read(p []byte) (int, error) {
 	n, err := c.r.Read(p)
 	c.n += int64(n)
 	return n, err
-}
-
-func splitPath(p string) []string {
-	var out []string
-	for _, part := range splitSlash(p) {
-		if part != "" {
-			out = append(out, part)
-		}
-	}
-	return out
-}
-
-func splitSlash(p string) []string {
-	var out []string
-	start := 0
-	for i := 0; i < len(p); i++ {
-		if p[i] == '/' {
-			out = append(out, p[start:i])
-			start = i + 1
-		}
-	}
-	return append(out, p[start:])
 }
 
 // translateFTPError maps the "file unavailable" replies onto fs.ErrNotExist so
