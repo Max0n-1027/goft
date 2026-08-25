@@ -46,8 +46,13 @@ func (c *Config) LogValue() slog.Value {
 func (r Remote) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("protocol", string(r.Protocol)),
-		slog.String("host", r.Host),
-		slog.String("path", r.Path),
+	}
+	if r.IsLocal() {
+		// No host to name, and the path is on this machine, so it is recorded
+		// in full like every other local path.
+		attrs = append(attrs, slog.String("path", absPath(r.Path)))
+	} else {
+		attrs = append(attrs, slog.String("host", r.Host), slog.String("path", r.Path))
 	}
 	add := func(key, value string) {
 		if value != "" {

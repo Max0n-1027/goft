@@ -3,6 +3,7 @@ package fsys
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 
 	"goft/internal/config"
 )
@@ -19,6 +20,10 @@ func NewRemote(ctx context.Context, r config.Remote) (FS, error) {
 		return newFTP(ctx, r)
 	case config.ProtocolSMB:
 		return newSMB(ctx, r)
+	case config.ProtocolLocal:
+		// Nothing is opened: the far side is a directory on this machine, and
+		// the engine cannot tell the difference.
+		return NewLocal(r.Path), nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", r.Protocol)
 	}
@@ -77,9 +82,24 @@ func Resolve(r config.Remote) (*Resolved, error) {
 		return resolveFTP(r)
 	case config.ProtocolSMB:
 		return resolveSMB(r)
+	case config.ProtocolLocal:
+		return resolveLocal(r)
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", r.Protocol)
 	}
+}
+
+// resolveLocal reports the far side of a local copy. There is nothing to look
+// up — no host, no port, no credentials — so the path is all there is to show,
+// and goft test shows it rather than printing nothing at all.
+func resolveLocal(r config.Remote) (*Resolved, error) {
+	res := &Resolved{}
+	path, err := filepath.Abs(r.Path)
+	if err != nil {
+		return nil, fmt.Errorf("remote.path %s: %w", r.Path, err)
+	}
+	res.record("path", path, SourceYAML)
+	return res, nil
 }
 
 func (r *Resolved) record(field, value, source string) {

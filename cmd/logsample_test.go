@@ -434,3 +434,100 @@ func containsTemp(names []string) bool {
 	}
 	return false
 }
+
+// TestGenerateLocalSample writes the output quoted in docs/local-copy.md: a
+// copy between two directories on this machine, which needs no server at all.
+func TestGenerateLocalSample(t *testing.T) {
+	out := os.Getenv("GOFT_LOG_SAMPLE")
+	if out == "" {
+		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
+	}
+
+	src := t.TempDir()
+	dst := t.TempDir()
+	logFile := filepath.Join(t.TempDir(), "local-copy.log")
+
+	for name, body := range map[string]string{
+		"invoice_202608_01.csv":         strings.Repeat("id,amount\n1,1200\n", 50000),
+		"2026-08/invoice_202608_02.csv": "id,amount\n2,980\n",
+	} {
+		p := filepath.Join(src, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := filepath.Join(t.TempDir(), "job.yaml")
+	body := fmt.Sprintf(`
+name: invoice-archive
+local:
+  path: %s
+remote:
+  protocol: local
+  path: %s
+recursive: true
+include: ["*.csv"]
+stable_duration: 3s
+workers: 2
+verify: hash
+on_exists: skip
+log:
+  path: %s
+  level: info
+`, src, dst, logFile)
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	clean := func(s string) string {
+		s = strings.ReplaceAll(s, src, "/data/out/invoice")
+		s = strings.ReplaceAll(s, dst, "/backup/invoice")
+		s = strings.ReplaceAll(s, cfg, "/etc/goft/invoice-archive.yaml")
+		s = strings.ReplaceAll(s, logFile, "/var/log/goft/invoice-archive.log")
+		return s
+	}
+	save := func(name, body string, align bool) {
+		body = clean(body)
+		if align {
+			body = realign(body)
+		}
+		if err := os.WriteFile(filepath.Join(out, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var testOut bytes.Buffer
+	resetFlags()
+	rootCmd.SetArgs([]string{"test", "-c", cfg})
+	rootCmd.SetOut(&testOut)
+	Execute()
+	save("local-test.txt", testOut.String(), true)
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := os.Stdout
+	os.Stdout = w
+	done := make(chan string, 1)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	resetFlags()
+	rootCmd.SetArgs([]string{"send", "-c", cfg, "--console"})
+	rootCmd.SetOut(os.Stdout)
+	Execute()
+	w.Close()
+	os.Stdout = saved
+	save("local-send.txt", <-done, false)
+
+	log, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	save("local-copy.log", string(log), false)
+}

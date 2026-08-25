@@ -44,10 +44,15 @@ import (
 type Protocol string
 
 // Supported remote protocols.
+//
+// ProtocolLocal is not remote at all: it names a second directory on this
+// machine, which is what makes a copy between two local directories a job like
+// any other rather than a special case in the engine.
 const (
-	ProtocolFTP  Protocol = "ftp"
-	ProtocolSFTP Protocol = "sftp"
-	ProtocolSMB  Protocol = "smb"
+	ProtocolFTP   Protocol = "ftp"
+	ProtocolSFTP  Protocol = "sftp"
+	ProtocolSMB   Protocol = "smb"
+	ProtocolLocal Protocol = "local"
 )
 
 // Verify selects how a transferred file is checked.
@@ -145,10 +150,17 @@ type Remote struct {
 	Domain string `mapstructure:"domain"`
 }
 
+// IsLocal reports whether the far side is another directory on this machine.
+func (r Remote) IsLocal() bool { return r.Protocol == ProtocolLocal }
+
 // Describe returns the remote location for logs and console output, without
 // opening a connection. The share is part of an SMB location, so leaving it out
 // would point at the wrong place.
 func (r Remote) Describe() string {
+	if r.IsLocal() {
+		// A path on this machine is clearer as itself than dressed up as a URL.
+		return absPath(r.Path)
+	}
 	loc := string(r.Protocol) + "://" + r.Host
 	if r.Protocol == ProtocolSMB && r.Share != "" {
 		loc += "/" + r.Share

@@ -3,6 +3,7 @@
 - [何が転送対象になるか](file-selection-ja.md) — 名前・安定化・サイズ上限で、周期がどのファイルを拾うか
 - [1ファイルが辿る道](transfer-lifecycle-ja.md) — 一時名・検証・本名への rename・転送後処理・再送
 - [ログを1行ずつ読む](log-example-ja.md) — 実際のログを、info と debug の両方でレコードごとに解説
+- [ローカルのディレクトリ同士でコピーする](local-copy-ja.md) — `protocol: local`、起動前の検証、`cp` との使い分け
 - [画面に出る内容](console-output-ja.md) — `goft test`・`--dry-run`・転送、そして2つの出力の分け方
 
 これらのページの例はすべて、[cmd/logsample_test.go](../cmd/logsample_test.go) のテストが

@@ -2,8 +2,8 @@
 
 [日本語](README-ja.md)
 
-Watches a directory and moves files over FTP, SFTP or SMB, verifying every file
-it transfers.
+Watches a directory and moves files over FTP, SFTP or SMB — or between two
+directories on the same machine — verifying every file it transfers.
 
 ```bash
 goft send -c invoice-upload.yaml        # local -> remote, once
@@ -52,6 +52,19 @@ log:
   level: info
   rotation: daily
 ```
+
+`protocol: local` names a second directory on this machine instead of a server,
+and the job is otherwise unchanged — same scan, same verification, same log:
+
+```yaml
+remote:
+  protocol: local
+  path: /backup/invoice
+```
+
+The two directories must be separate; goft refuses a configuration where either
+contains the other. See
+[Copying between two local directories](docs/local-copy.md).
 
 The direction is chosen by the command, not by the file. That means the same
 file could be used for both `send` and `recv`; keep one file per purpose,
@@ -321,6 +334,7 @@ The pages under [docs/](docs/README.md) walk through the behaviour with output
 from real runs:
 
 - [What gets transferred](docs/file-selection.md) — names, settling, the size cap
+- [Copying between two local directories](docs/local-copy.md) — `protocol: local`
 - [The life of one file](docs/transfer-lifecycle.md) — temporary name, verification, rename, post-transfer actions, retries
 - [A log, line by line](docs/log-example.md) — a real log explained record by record
 - [What a run looks like on screen](docs/console-output.md) — `goft test`, `--dry-run`, a transfer

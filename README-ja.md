@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-ディレクトリを監視して FTP / SFTP / SMB でファイルを転送します。転送したファイルは必ず検証します。
+ディレクトリを監視して FTP / SFTP / SMB でファイルを転送します。同じマシン上のディレクトリ同士のコピーもできます。転送したファイルは必ず検証します。
 
 ```bash
 goft send -c invoice-upload.yaml        # ローカル → リモート、1回だけ
@@ -47,6 +47,16 @@ log:
   level: info
   rotation: daily
 ```
+
+`protocol: local` を指定すると、サーバーではなく同じマシン上のもう1つのディレクトリを指定できます。それ以外はまったく同じジョブで、走査も検証もログも変わりません。
+
+```yaml
+remote:
+  protocol: local
+  path: /backup/invoice
+```
+
+2つのディレクトリは別々である必要があり、一方が他方を含む設定は拒否されます。詳しくは [ローカルのディレクトリ同士でコピーする](docs/local-copy-ja.md) を参照してください。
 
 転送の方向は設定ファイルではなくコマンドで決まります。つまり同じファイルを `send` と `recv` の両方で使えてしまいます。用途ごとにファイルを分けてください。とくに `post_action: delete` と組み合わせると、2つのジョブが同じファイルを延々とやり取りすることになります。
 
@@ -205,6 +215,7 @@ jq -r 'select(.cycle_id == "6482c7d7-...")' goft.log
 [docs/](docs/README-ja.md) 以下のページでは、実際の実行結果を使って挙動を解説しています。
 
 - [何が転送対象になるか](docs/file-selection-ja.md) — 名前・安定化・サイズ上限
+- [ローカルのディレクトリ同士でコピーする](docs/local-copy-ja.md) — `protocol: local`
 - [1ファイルが辿る道](docs/transfer-lifecycle-ja.md) — 一時名・検証・rename・転送後処理・再送
 - [ログを1行ずつ読む](docs/log-example-ja.md) — 実際のログをレコードごとに解説
 - [画面に出る内容](docs/console-output-ja.md) — `goft test`・`--dry-run`・転送
