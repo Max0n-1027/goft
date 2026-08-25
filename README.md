@@ -311,7 +311,19 @@ unknown one is a configuration error rather than something silently ignored.
 `log.level` is the only verbosity setting, and it governs both outputs. See the
 table at the end of [goft.example.yaml](goft.example.yaml).
 
+[docs/log-example.md](docs/log-example.md) walks through a real log line by
+line: a transfer and its hashes, a skip, a retry and its backoff, a failure, and
+what the same run looks like at debug level.
+
 ## Documentation
+
+The pages under [docs/](docs/README.md) walk through the behaviour with output
+from real runs:
+
+- [What gets transferred](docs/file-selection.md) — names, settling, the size cap
+- [The life of one file](docs/transfer-lifecycle.md) — temporary name, verification, rename, post-transfer actions, retries
+- [A log, line by line](docs/log-example.md) — a real log explained record by record
+- [What a run looks like on screen](docs/console-output.md) — `goft test`, `--dry-run`, a transfer
 
 `go doc` covers the command and every package:
 
