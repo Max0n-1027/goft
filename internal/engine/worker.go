@@ -364,7 +364,13 @@ func (e *Engine) report(ctx context.Context, c *Collector, r Result) {
 	if r.Attempts > 1 {
 		add(logging.KeyAttempt, r.Attempts)
 	}
-	add(logging.KeyRateMiBs, rate(r.Bytes, r.Elapsed))
+	if r.Outcome == Success {
+		// Only a file that was actually read and written has a rate. On a skip
+		// the bytes are the size of the file that stayed put and the elapsed
+		// time is however long the decision took, so dividing one by the other
+		// reported an untransferred file at millions of MiB/s.
+		add(logging.KeyRateMiBs, rate(r.Bytes, r.Elapsed))
+	}
 
 	e.log.Log(ctx, r.Level(), "transfer", attrs...)
 

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"goft/internal/config"
 	"goft/internal/fsys"
@@ -311,5 +312,112 @@ func TestIdenticalSkipRecordsTheDigests(t *testing.T) {
 	dst, _ := rec["hash_dst"].(string)
 	if src == "" || src != dst {
 		t.Errorf("hash_src = %q hash_dst = %q, want the digests that settled it", src, dst)
+	}
+}
+
+// countReason returns how many records at the given level carry this reason.
+func countReason(t *testing.T, buf *bytes.Buffer, level, reason string) int {
+	t.Helper()
+	n := 0
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var rec map[string]any
+		if line != "" && json.Unmarshal([]byte(line), &rec) == nil &&
+			rec["level"] == level && rec["reason"] == reason {
+			n++
+		}
+	}
+	return n
+}
+
+func TestSizeLimitWarnsEvenWhenFilesHaveToSettle(t *testing.T) {
+	// The suppression used to key off the stabilizer's "changed since the last
+	// cycle" flag, which a settled file never has: it is not settled the first
+	// time it is seen, and by the time it settles it is no longer new. With any
+	// stable_duration at all the warning was therefore unreachable, and an
+	// oversized file was only ever counted in the summary.
+	h := newSeededBig(t)
+	h.cfg.StableDuration = 50 * time.Millisecond
+
+	var buf bytes.Buffer
+	e := New(Options{
+		Config:    h.cfg,
+		Direction: config.DirSend,
+		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger:    slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Single:    true,
+	})
+
+	if _, err := e.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := countReason(t, &buf, "WARN", "size_limit"); got != 1 {
+		t.Fatalf("first cycle logged %d warnings, want exactly one", got)
+	}
+
+	buf.Reset()
+	if _, err := e.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := countReason(t, &buf, "WARN", "size_limit"); got != 0 {
+		t.Errorf("second cycle logged %d warnings, want none: the file is unchanged", got)
+	}
+	if got := countReason(t, &buf, "DEBUG", "size_limit"); got != 1 {
+		t.Errorf("second cycle logged %d debug records, want the condition still recorded", got)
+	}
+}
+
+func TestSizeLimitWarnsAgainWhenTheFileChanges(t *testing.T) {
+	h := newSeededBig(t)
+
+	var buf bytes.Buffer
+	e := New(Options{
+		Config:    h.cfg,
+		Direction: config.DirSend,
+		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger:    slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	})
+
+	if _, err := e.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+
+	// A file that grew is news again: it is a different file from the one that
+	// was reported, and staying quiet would hide that it is still not moving.
+	h.write(h.srcDir, "big.dat", strings.Repeat("x", 3*1024*1024))
+	if _, err := e.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := countReason(t, &buf, "WARN", "size_limit"); got != 1 {
+		t.Errorf("a changed file logged %d warnings, want one", got)
+	}
+}
+
+func TestRateIsRecordedOnlyForFilesThatMoved(t *testing.T) {
+	// bytes on a skipped record is the size of the file that was not sent, and
+	// the elapsed time is however long the decision took, so a rate computed
+	// from the two is meaningless: an untransferred 2 MiB file was reported at
+	// millions of MiB/s.
+	h := newSeededBig(t)
+	h.cfg.Log.Level = "debug"
+	h.write(h.srcDir, "small.csv", "id,amount\n1,1200\n")
+
+	for _, r := range runAtLevel(t, h, slog.LevelDebug) {
+		if r["event"] != "transfer" || r["msg"] != "transfer" {
+			continue
+		}
+		_, hasRate := r[config.FieldRateMiBs]
+		switch r["result"] {
+		case "success":
+			if !hasRate {
+				t.Errorf("a transferred file has no rate: %v", r)
+			}
+		default:
+			if hasRate {
+				t.Errorf("%v carries a rate for a file that was not transferred", r)
+			}
+		}
 	}
 }

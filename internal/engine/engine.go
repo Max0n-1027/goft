@@ -73,6 +73,11 @@ type Engine struct {
 	fields config.LogFieldSet
 	now    func() time.Time
 
+	// oversize remembers the files already reported as too large to send, so
+	// that the report is made once per file rather than once per cycle. Only
+	// collect touches it, and cycles never overlap.
+	oversize map[string]scan.File
+
 	// reportMu serialises result reporting so that the collector, the log and
 	// the console see one result at a time and in a consistent order.
 	reportMu sync.Mutex
@@ -92,14 +97,15 @@ func New(opts Options) *Engine {
 	// A bad level cannot reach here: the configuration is validated first.
 	level, _ := config.ParseLevel(opts.Config.Log.Level)
 	return &Engine{
-		opts:   opts,
-		cfg:    opts.Config,
-		filter: scan.NewFilter(opts.Config.Include, opts.Config.Exclude),
-		stab:   scan.NewStabilizer(opts.Config.StableDuration, now),
-		base:   log,
-		log:    log,
-		fields: opts.Config.LogFields(level),
-		now:    now,
+		opts:     opts,
+		cfg:      opts.Config,
+		filter:   scan.NewFilter(opts.Config.Include, opts.Config.Exclude),
+		stab:     scan.NewStabilizer(opts.Config.StableDuration, now),
+		base:     log,
+		log:      log,
+		fields:   opts.Config.LogFields(level),
+		now:      now,
+		oversize: map[string]scan.File{},
 	}
 }
 
@@ -396,22 +402,50 @@ func (e *Engine) collect(ctx context.Context, src fsys.FS) ([]target, error) {
 
 	limit := e.cfg.MaxFileSizeMB * 1024 * 1024
 	targets := make([]target, 0, len(stable))
+	seen := make(map[string]bool)
 	for _, f := range stable {
 		t := target{file: f}
 		if limit > 0 && f.Size > limit {
 			t.overSizeCap = true
-			// Reported at warn the first time and at debug on later cycles.
-			// This is why the size limit is applied after settling rather than
-			// during the scan: a file dropped during the scan would never reach
-			// the stabilizer, and the suppression would have nothing to go on.
-			t.recurring = !e.stab.ChangedInLastCycle(f.Path)
+			t.recurring = e.noteOversize(f)
+			seen[f.Path] = true
 		}
 		targets = append(targets, t)
 	}
+	e.forgetOversize(seen)
 	e.log.Debug("scan complete",
 		logging.KeyEvent, logging.EventScan,
 		"found", len(files), "settled", len(stable))
 	return targets, nil
+}
+
+// noteOversize records a file that exceeds the size cap, and reports whether
+// the same file has already been reported. The first sighting is written at
+// warn and later ones at debug, so a file that will never be sent does not
+// repeat the same warning on every poll.
+//
+// The stabilizer's "changed since the last cycle" flag cannot answer this. A
+// settled file never has it: it is not settled the first time it is seen, and
+// by the time it settles it is no longer new. Keying the suppression off that
+// flag made the warning unreachable for any job with a stable_duration, which
+// is every job that is not in a test.
+func (e *Engine) noteOversize(f scan.File) bool {
+	prev, reported := e.oversize[f.Path]
+	e.oversize[f.Path] = f
+	// A file that grew, shrank or was rewritten is news again: it is not the
+	// file that was reported, and staying quiet would hide that this one is
+	// not moving either.
+	return reported && prev.Size == f.Size && prev.ModTime.Equal(f.ModTime)
+}
+
+// forgetOversize drops files that are no longer over the cap, so that one which
+// comes back is reported again and the map does not grow without end.
+func (e *Engine) forgetOversize(seen map[string]bool) {
+	for path := range e.oversize {
+		if !seen[path] {
+			delete(e.oversize, path)
+		}
+	}
 }
 
 func targetDirs(targets []target) []string {

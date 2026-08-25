@@ -165,30 +165,19 @@ func TestStabilizerAccumulatesAcrossShortPolls(t *testing.T) {
 	}
 }
 
-func TestStabilizerReportsWhatChanged(t *testing.T) {
-	now := time.Date(2026, 8, 21, 10, 0, 0, 0, time.UTC)
-	s := NewStabilizer(0, func() time.Time { return now })
-
-	f := []File{{Path: "big.dat", Size: 99, ModTime: now}}
-	s.Observe(f)
-	if !s.ChangedInLastCycle("big.dat") {
-		t.Error("a newly seen file counts as changed, so a size limit is reported loudly once")
-	}
-
-	now = now.Add(time.Minute)
-	s.Observe(f)
-	if s.ChangedInLastCycle("big.dat") {
-		t.Error("an unchanged file must not count as changed, so the report quietens down")
-	}
-}
-
 func TestStabilizerForgetsVanishedFiles(t *testing.T) {
-	now := time.Now()
-	s := NewStabilizer(0, func() time.Time { return now })
-	s.Observe([]File{{Path: "gone", Size: 1}})
+	now := time.Date(2026, 8, 21, 10, 0, 0, 0, time.UTC)
+	s := NewStabilizer(time.Minute, func() time.Time { return now })
+
+	f := []File{{Path: "gone", Size: 1, ModTime: now}}
+	s.Observe(f)
+	now = now.Add(2 * time.Minute)
 	s.Observe(nil)
-	if s.ChangedInLastCycle("gone") {
-		t.Error("a path that left the listing should be forgotten")
+
+	// The file is back, but it is not the one that was being watched: whatever
+	// wrote it started again, so the settle time starts again with it.
+	if stable := s.Observe(f); len(stable) != 0 {
+		t.Error("a path that left the listing and returned should settle from scratch")
 	}
 }
 
