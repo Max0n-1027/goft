@@ -153,6 +153,7 @@ func TestResolveFTPHonoursUseNetrcFalse(t *testing.T) {
 }
 
 func TestResolveFTPWarnsAboutLoosePermissions(t *testing.T) {
+	requirePOSIX(t, "Windows has no mode bits for checkSecretPerm to look at")
 	if os.Getuid() == 0 {
 		t.Skip("running as root makes the permission check moot")
 	}

@@ -61,6 +61,7 @@ func TestMoveFileCopiesWhenRenameCannot(t *testing.T) {
 }
 
 func TestSharingViolationIsWindowsOnly(t *testing.T) {
+	requirePOSIX(t, "on Windows this message is a lock and must be recognised")
 	// The check is by message because no portable errno covers it. On anything
 	// but Windows it must never fire, or a real failure would be retried
 	// pointlessly.

@@ -88,6 +88,9 @@ func (l *Local) Open(_ context.Context, name string) (io.ReadCloser, error) {
 
 // Write implements FS, truncating any existing file.
 func (l *Local) Write(_ context.Context, name string, r io.Reader) (int64, error) {
+	if err := l.checkStorable(name); err != nil {
+		return 0, err
+	}
 	f, err := os.OpenFile(l.HostPath(name), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, transferredFileMode)
 	if err != nil {
 		return 0, err
@@ -106,13 +109,30 @@ func (l *Local) Write(_ context.Context, name string, r io.Reader) (int64, error
 
 // MkdirAll implements FS.
 func (l *Local) MkdirAll(_ context.Context, dir string) error {
+	if err := l.checkStorable(dir); err != nil {
+		return err
+	}
 	return os.MkdirAll(l.HostPath(dir), 0o755)
 }
 
 // Rename implements FS. Crossing a volume boundary is absorbed here so that
 // callers only ever see a rename.
+//
+// The destination is checked as well as the temporary name the caller wrote,
+// because a name whose only fault is a trailing dot or space passes as a
+// temporary — ".goft.tmp" hides the end of it — and fails only here.
 func (l *Local) Rename(_ context.Context, from, to string) error {
+	if err := l.checkStorable(to); err != nil {
+		return err
+	}
 	return MoveFile(l.HostPath(from), l.HostPath(to))
+}
+
+// checkStorable refuses a name this operating system would store as something
+// other than what it says, which is the one failure goft's own verification
+// cannot catch. See [checkStorableName].
+func (l *Local) checkStorable(name string) error {
+	return checkStorableName(name, runtime.GOOS)
 }
 
 // Remove implements FS.

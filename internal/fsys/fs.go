@@ -18,6 +18,11 @@ depends on: a missing file or directory reports an error satisfying
 errors.Is(err, fs.ErrNotExist), [FS.Write] truncates a file that already
 exists, and [Entry.IsRegular] is true only for ordinary files. The conformance
 suite in the tests checks all of it against every protocol.
+
+An implementation may also refuse a name outright, with an error wrapping
+fs.ErrInvalid, when its file system would store the file under a different name
+than the one asked for. [Local] does this on Windows; see [checkStorableName]
+for what it covers and why it cannot be left to verification to catch.
 */
 package fsys
 
