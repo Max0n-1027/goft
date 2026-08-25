@@ -66,6 +66,25 @@ func (s *scenario) run(args ...string) int {
 func resetFlags() {
 	flagConfig, flagLogLevel, flagLogFile = "", "", ""
 	flagConsole, flagNoConsole, flagDryRun = false, false, false
+
+	// Setting the variables back is not enough: pflag also records that a flag
+	// was given at all, and it is that record which MarkFlagsMutuallyExclusive
+	// consults. Left alone, a --no-console in one test makes --console in a
+	// later one fail as a conflict, and the tests only pass one at a time.
+	cmds := rootCmd.Commands()
+	for i := 0; i < len(cmds); i++ {
+		cmds = append(cmds, cmds[i].Commands()...)
+	}
+	for _, c := range append(cmds, rootCmd) {
+		for _, name := range []string{"config", "log-level", "log-file", "console", "no-console", "dry-run"} {
+			if f := c.Flags().Lookup(name); f != nil {
+				f.Changed = false
+			}
+			if f := c.PersistentFlags().Lookup(name); f != nil {
+				f.Changed = false
+			}
+		}
+	}
 }
 
 func (s *scenario) writeLocal(name, body string) {
@@ -359,6 +378,7 @@ func TestTestCommandProbesTheLocalDirectory(t *testing.T) {
 }
 
 func TestTestCommandReportsAReadOnlyLocalDirectory(t *testing.T) {
+	requirePOSIX(t, "chmod cannot make a directory read-only on Windows, so the probe would still succeed")
 	if os.Getuid() == 0 {
 		t.Skip("root can write to a read-only directory")
 	}

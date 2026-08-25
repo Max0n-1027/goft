@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/cloudsoda/go-smb2 v0.0.0-20260803221621-0b399b9d036c
+	github.com/danieljoos/wincred v1.2.3
 	github.com/fclairamb/ftpserverlib v0.32.3
 	github.com/google/uuid v1.6.0
 	github.com/jlaffaye/ftp v0.2.2
@@ -16,12 +17,12 @@ require (
 	golang.org/x/crypto v0.55.0
 	golang.org/x/sync v0.22.0
 	golang.org/x/term v0.45.0
+	golang.org/x/text v0.41.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
 	github.com/cloudsoda/sddl v0.0.0-20250224235906-926454e91efc // indirect
-	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/geoffgarside/ber v1.1.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
@@ -43,5 +44,4 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
 )

@@ -118,6 +118,7 @@ func TestResolveSFTPRelaxesHostKeyCheckingOnlyLoudly(t *testing.T) {
 }
 
 func TestExpandTokens(t *testing.T) {
+	requirePOSIX(t, "the joined path uses the host separator, which is a backslash on Windows")
 	got := expandTokens("~/.ssh/%h_%u", "example.com", "alice", "/home/alice")
 	want := "/home/alice/.ssh/example.com_alice"
 	if got != want {

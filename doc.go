@@ -23,6 +23,12 @@ therefore only appears under its real name on the receiving side once it is
 complete and verified; a process killed mid-transfer leaves nothing behind but
 a .goft.tmp file, which the next run overwrites.
 
+Receiving onto Windows refuses a file whose name that platform would store as
+something else — a colon, which opens an NTFS alternate data stream, a trailing
+dot or space, which is dropped, or a reserved device name. Such a file is
+recorded as failed rather than written, because reading it back would find it
+again and verification would pass over a file no other program can see.
+
 # Configuration
 
 One YAML file describes one job, and one job runs in one process. To run several

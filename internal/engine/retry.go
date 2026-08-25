@@ -21,6 +21,7 @@ import (
 //   - the file or directory is not there,
 //   - the credentials do not allow it,
 //   - the destination already holds a file the action refuses to replace,
+//   - the receiving file system cannot hold a file under that name,
 //   - the server gave a 5xx reply, which FTP defines as a permanent negative.
 //
 // Verification failures are deliberately absent: a hash mismatch can come from
@@ -37,6 +38,8 @@ func Retryable(err error) bool {
 	case errors.Is(err, fs.ErrPermission):
 		return false
 	case errors.Is(err, fs.ErrExist):
+		return false
+	case errors.Is(err, fs.ErrInvalid):
 		return false
 	}
 

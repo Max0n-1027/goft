@@ -98,7 +98,7 @@ func (c *Console) Plan(p engine.Plan) {
 		c.notable = true
 		c.emit(fmt.Sprintf("goft %s  %s  (dry-run)", c.job, route))
 		for _, f := range p.Files {
-			c.emit(fmt.Sprintf("  %-40s %10s", f.Path, humanBytes(f.Size)))
+			c.emit(fmt.Sprintf("  %s %10s", padRight(f.Path, 40), humanBytes(f.Size)))
 		}
 		return
 	}
@@ -113,11 +113,11 @@ func (c *Console) Result(r engine.Result) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	width := len(fmt.Sprint(r.Total))
+	digits := len(fmt.Sprint(r.Total))
 	status := c.paint(r)
 
-	line := fmt.Sprintf("[%*d/%d] %-40s %10s  %s %6.1fs",
-		width, r.Index, r.Total, r.Path, humanBytes(r.Bytes), status, r.Elapsed.Seconds())
+	line := fmt.Sprintf("[%*d/%d] %s %10s  %s %6.1fs",
+		digits, r.Index, r.Total, padRight(r.Path, 40), humanBytes(r.Bytes), status, r.Elapsed.Seconds())
 
 	switch {
 	case r.Err != nil:

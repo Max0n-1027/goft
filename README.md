@@ -144,6 +144,22 @@ sending directory should not keep growing.
 **Transferred files are created mode 0644**, subject to the process umask, so
 that whatever consumes them next can read them. Windows ignores the mode.
 
+**Windows refuses a name it would store as something else.** A file the server
+calls `2026:01.csv` cannot be written to a Windows disk under that name: the
+colon opens an NTFS alternate data stream, so the bytes end up hidden inside an
+empty file called `2026`, invisible to Explorer, to `dir`, to a backup and to
+goft's own next cycle. Reading the file back finds it again — the same
+reinterpretation happens on the way in — so verification passes and the
+transfer looks like a success. A trailing dot or space is the same story:
+Windows drops it, and the file arrives under a name that is not the one the
+server used. So are the reserved device names (`con`, `nul`, `aux`, `com1` and
+the rest), which ordinary Win32 path resolution cannot reach afterwards.
+Because none of this can be caught after the fact, `recv` onto Windows refuses
+such a name before writing anything, records the file as failed and says what
+about the name was the problem. It is not retried, since the name would be
+refused identically next time. The rest of the cycle carries on, and every name
+Windows can hold as written is transferred as before.
+
 **A watching job that keeps failing goes quiet rather than loud.** When a whole
 cycle cannot run — an unreachable server, say — the pause before the next one
 doubles, up to five minutes, and returns to `poll_interval` as soon as a cycle
@@ -193,6 +209,23 @@ The same variables work for `ftp` and `smb` (add `GOFT_LIVE_SHARE` for the
 latter). Pass `-count=1`: Go caches test results and cannot tell that the server
 changed underneath it.
 
+### Windows
+
+`go test ./...` passes on Windows as it does elsewhere. Behaviour that only
+exists there — locked files, the names Windows will not store, `%USERPROFILE%`,
+paths past `MAX_PATH` — is covered by the `_windows_test.go` files, which are
+built only on Windows. Going the other way, a test whose expectations are those
+of a POSIX file system calls `requirePOSIX` and says why, so it reports as
+skipped rather than failing on Windows; each of those has a Windows counterpart
+asserting what the same code does there instead.
+
+One test is opt-in, because it writes to the credential store of whoever runs
+it. It registers an entry under a host no job would use and removes it again:
+
+```bash
+GOFT_WINCRED_TEST=1 go test -count=1 ./internal/fsys/ -run Credential -v
+```
+
 ## Exit codes
 
 | Code | Meaning |
@@ -214,6 +247,12 @@ whoever is watching. Single runs print it by default, `serve` does not, and
 `serve` reports a cycle once it is over, and stays silent about cycles where
 nothing moved, so a working watcher with nothing to do prints nothing at all.
 A cycle that could not run — an unreachable server, say — is always reported.
+
+Both outputs are UTF-8, the log because JSON is defined that way and the console
+because a file name is printed as it is stored. A Windows console left on its
+regional code page will therefore garble anything outside ASCII; `chcp 65001`,
+Windows Terminal or PowerShell 7 shows it properly. The bytes written are the
+same either way, so a redirected log is unaffected.
 
 When no log file is configured and the console output is on, the JSON log goes
 to stderr so the two never mix:

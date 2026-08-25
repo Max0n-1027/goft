@@ -58,8 +58,10 @@ type Result struct {
 	Total int
 	// Path is the file relative to the sending root.
 	Path string
-	// Bytes is what was actually transferred, which for a skipped file is the
-	// size it would have been.
+	// Bytes is what was actually transferred, which for a file that was
+	// skipped or that failed is the size it would have been. The cycle
+	// [Summary] counts only the bytes that did move, so the two differ after a
+	// failure and are meant to.
 	Bytes int64
 	// Elapsed covers the whole handling of the file, retries included.
 	Elapsed time.Duration
