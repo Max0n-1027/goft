@@ -1,6 +1,6 @@
 /*
-Goft watches a directory and moves files over FTP, SFTP or SMB, verifying every
-file it transfers.
+Goft watches a directory and moves files over FTP, SFTP or SMB, or between two
+directories on the same machine, verifying every file it transfers.
 
 Usage:
 
@@ -8,12 +8,16 @@ Usage:
 
 The commands are:
 
-	send         transfer from the local directory to the remote server once
-	recv         transfer from the remote server to the local directory once
+	send         transfer from the local directory to the other side once
+	recv         transfer from the other side to the local directory once
 	serve send   watch the local directory and transfer continuously
-	serve recv   watch the remote server and transfer continuously
+	serve recv   watch the other side and transfer continuously
 	test         check the configuration and the connection without transferring
 	version      print the build information
+
+The other side is a server reached over ftp, sftp or smb, or — with
+protocol: local — a second directory on this machine. The engine does not know
+which: everything below is the same either way.
 
 For every file it finds on the sending side, goft waits until the file has
 stopped changing, writes it to the receiving side under a temporary name,

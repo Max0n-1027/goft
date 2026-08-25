@@ -288,3 +288,97 @@ func TestValidateRejectsUnknownLogFields(t *testing.T) {
 		t.Errorf("error = %v, want it to name the offender and list what is valid", err)
 	}
 }
+
+func localConfig(t *testing.T) *Config {
+	t.Helper()
+	cfg := validConfig(t.TempDir())
+	cfg.Remote = Remote{Protocol: ProtocolLocal, Path: t.TempDir()}
+	return cfg
+}
+
+func TestValidateAcceptsALocalPairWithNoHost(t *testing.T) {
+	// A directory on this machine has nothing to connect to, so requiring a
+	// host would mean inventing one.
+	if err := Validate(localConfig(t)); err != nil {
+		t.Fatalf("Validate() = %v, want a local pair to be accepted", err)
+	}
+}
+
+func TestValidateRejectsNetworkSettingsOnALocalPair(t *testing.T) {
+	// Ignoring them would leave the author believing the job authenticates as
+	// somebody, or reaches another machine.
+	for _, tc := range []struct {
+		field string
+		set   func(*Remote)
+	}{
+		{"host", func(r *Remote) { r.Host = "fileserver" }},
+		{"port", func(r *Remote) { r.Port = 22 }},
+		{"user", func(r *Remote) { r.User = "uploader" }},
+		{"password", func(r *Remote) { r.Password = Secret("s3cret") }},
+		{"share", func(r *Remote) { r.Share = "shared" }},
+	} {
+		t.Run(tc.field, func(t *testing.T) {
+			cfg := localConfig(t)
+			tc.set(&cfg.Remote)
+
+			err := Validate(cfg)
+			if err == nil || !strings.Contains(err.Error(), "remote."+tc.field) {
+				t.Fatalf("Validate() = %v, want remote.%s reported as unused", err, tc.field)
+			}
+		})
+	}
+}
+
+func TestValidateRejectsOverlappingLocalDirectories(t *testing.T) {
+	// Transferring into the directory being scanned copies the copies, which
+	// with recursive: true never stops.
+	root := t.TempDir()
+	nested := filepath.Join(root, "done")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct {
+		name          string
+		local, remote string
+	}{
+		{"destination inside source", root, nested},
+		{"source inside destination", nested, root},
+		{"the same directory twice", root, root},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := validConfig(tc.local)
+			cfg.Remote = Remote{Protocol: ProtocolLocal, Path: tc.remote}
+
+			if err := Validate(cfg); err == nil {
+				t.Fatal("want the two sides reported as overlapping")
+			}
+		})
+	}
+}
+
+func TestValidateRejectsALocalPathThatIsNotADirectory(t *testing.T) {
+	cfg := localConfig(t)
+	file := filepath.Join(t.TempDir(), "invoice.csv")
+	if err := os.WriteFile(file, []byte("id\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Remote.Path = file
+
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("Validate() = %v, want the file reported", err)
+	}
+}
+
+func TestRemoteDescribeRendersALocalPathAsItself(t *testing.T) {
+	// A directory on this machine is clearer as itself than dressed up as a
+	// URL, and it is made absolute so the console names a place a reader can go
+	// to whatever directory the command ran from.
+	dir := t.TempDir()
+	if got := (Remote{Protocol: ProtocolLocal, Path: dir}).Describe(); got != dir {
+		t.Errorf("Describe() = %q, want %q", got, dir)
+	}
+	if got := (Remote{Protocol: ProtocolLocal, Path: "backup"}).Describe(); !filepath.IsAbs(got) {
+		t.Errorf("Describe() = %q, want an absolute path", got)
+	}
+}

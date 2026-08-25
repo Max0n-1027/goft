@@ -80,14 +80,21 @@ func runTest(ctx context.Context, out io.Writer) error {
 		report("warning", warning, "")
 	}
 
+	// Nothing is dialled for a directory on this machine, so calling the check
+	// "connect" would describe something that did not happen.
+	opened := "connect"
+	if cfg.Remote.IsLocal() {
+		opened = "remote"
+	}
+
 	remote, err := fsys.NewRemote(ctx, cfg.Remote)
 	if err != nil {
-		report("connect", string(cfg.Remote.Protocol), "FAILED")
+		report(opened, string(cfg.Remote.Protocol), "FAILED")
 		w.Flush()
 		return startupError(err)
 	}
 	defer remote.Close()
-	report("connect", remote.Describe(), "OK")
+	report(opened, remote.Describe(), "OK")
 
 	canRecv := checkList(ctx, remote, report)
 	canSend := checkSend(ctx, cfg.Remote, remote, canRecv, report)
@@ -110,7 +117,7 @@ func checkSend(ctx context.Context, cfg config.Remote, remote fsys.FS, exists bo
 	}
 
 	parent := cfg
-	parent.Path = path.Dir(cfg.Path)
+	parent.Path = parentDir(cfg)
 	if parent.Path == cfg.Path {
 		report("send (write)", "remote path does not exist and has no parent to check", "NG")
 		return false
@@ -171,6 +178,16 @@ func checkList(ctx context.Context, remote fsys.FS, report func(string, string, 
 		report("recv (list)", err.Error(), "NG")
 		return false
 	}
+}
+
+// parentDir returns the directory the remote path sits in, in whatever form
+// that protocol writes paths: slash separated everywhere except a directory on
+// this machine, which uses the host separator.
+func parentDir(cfg config.Remote) string {
+	if cfg.IsLocal() {
+		return filepath.Dir(cfg.Path)
+	}
+	return path.Dir(cfg.Path)
 }
 
 // probeWrite creates and removes one directory to prove write access.

@@ -6,6 +6,8 @@
   verification, the rename into place, post-transfer actions and retries.
 - [A log, line by line](log-example.md) — a real log, explained record by
   record, at info and at debug level.
+- [Copying between two local directories](local-copy.md) — `protocol: local`,
+  what it checks before it runs, and when it beats `cp`.
 - [What a run looks like on screen](console-output.md) — `goft test`,
   `--dry-run`, a transfer, and how the two output streams are kept apart.
 

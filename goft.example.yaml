@@ -14,9 +14,17 @@ local:
 
 # The remote side.
 remote:
-  protocol: sftp              # ftp | sftp | smb
+  protocol: sftp              # ftp | sftp | smb | local
   host: invoice-sftp          # for sftp this may be a ~/.ssh/config Host alias
   path: /upload/invoice
+
+  # protocol: local names a second directory on this machine rather than a
+  # server. Nothing else about the job changes. The two directories must be
+  # separate: one inside the other would transfer the copies as well.
+  #   protocol: local
+  #   path: /backup/invoice
+  # host, port, user, password and share are rejected there, since none of them
+  # mean anything for a directory on this disk.
 
   # Anything left out below is filled in from the Windows Credential Manager,
   # then ~/.ssh/config (sftp) or ~/.netrc (ftp). What is written here always
@@ -103,7 +111,7 @@ log:
   #
   #   src          path relative to the sending root
   #   dst          where the file was written, in full
-  #   protocol     ftp | sftp | smb
+  #   protocol     ftp | sftp | smb | local
   #   bytes        bytes transferred
   #   duration_ms  how long the file took
   #   verify       the verification method used

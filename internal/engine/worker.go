@@ -403,6 +403,11 @@ func (e *Engine) localPath(rel string) string {
 }
 
 func (e *Engine) remotePath(rel string) string {
+	if e.cfg.Remote.IsLocal() {
+		// The far side is a directory on this machine, so it is written the way
+		// this machine writes paths.
+		return filepath.Join(e.cfg.Remote.Path, filepath.FromSlash(rel))
+	}
 	return e.cfg.Remote.Describe() + "/" + rel
 }
 

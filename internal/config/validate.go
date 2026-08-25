@@ -80,9 +80,6 @@ func validateLocal(c *Config, add addFunc) {
 }
 
 func validateRemote(c *Config, add addFunc) {
-	if c.Remote.Host == "" {
-		add("remote.host is required")
-	}
 	if c.Remote.Path == "" {
 		add("remote.path is required")
 	}
@@ -90,7 +87,7 @@ func validateRemote(c *Config, add addFunc) {
 		add("remote.port %d is out of range", c.Remote.Port)
 	}
 
-	protocols := []Protocol{ProtocolFTP, ProtocolSFTP, ProtocolSMB}
+	protocols := []Protocol{ProtocolFTP, ProtocolSFTP, ProtocolSMB, ProtocolLocal}
 	switch {
 	case c.Remote.Protocol == "":
 		add("remote.protocol is required (%s)", quoted(protocols))
@@ -101,6 +98,62 @@ func validateRemote(c *Config, add addFunc) {
 		if c.Remote.Share == "" {
 			add("remote.share is required for protocol smb")
 		}
+	case c.Remote.Protocol == ProtocolLocal:
+		validateLocalRemote(c, add)
+		return
+	}
+
+	if c.Remote.Host == "" {
+		add("remote.host is required")
+	}
+}
+
+// validateLocalRemote checks the far side of a copy between two directories on
+// this machine.
+//
+// Settings that only mean something over a network are rejected rather than
+// ignored: a job that names a host or a password for a directory on its own
+// disk is not the job its author thought they were writing.
+func validateLocalRemote(c *Config, add addFunc) {
+	for _, unused := range []struct {
+		name string
+		set  bool
+	}{
+		{"host", c.Remote.Host != ""},
+		{"port", c.Remote.Port != 0},
+		{"user", c.Remote.User != ""},
+		{"password", c.Remote.Password.IsSet()},
+		{"share", c.Remote.Share != ""},
+	} {
+		if unused.set {
+			add("remote.%s is not used with protocol local", unused.name)
+		}
+	}
+
+	if fi, err := os.Stat(c.Remote.Path); err == nil && !fi.IsDir() {
+		add("remote.path %q is not a directory", c.Remote.Path)
+	}
+
+	// Two directories where one contains the other would transfer a file into
+	// the place it is scanned from, and with recursive: true keep copying the
+	// copies. The same directory on both sides is the same mistake written
+	// more briefly.
+	if c.Local.Path == "" || c.Remote.Path == "" {
+		return
+	}
+	switch inside, err := isInside(c.Local.Path, c.Remote.Path); {
+	case err != nil:
+		add("remote.path %q: %v", c.Remote.Path, err)
+	case inside:
+		add("remote.path %q is inside local.path %q: the two sides of a transfer must be separate directories",
+			c.Remote.Path, c.Local.Path)
+	}
+	switch inside, err := isInside(c.Remote.Path, c.Local.Path); {
+	case err != nil:
+		add("local.path %q: %v", c.Local.Path, err)
+	case inside:
+		add("local.path %q is inside remote.path %q: the two sides of a transfer must be separate directories",
+			c.Local.Path, c.Remote.Path)
 	}
 }
 

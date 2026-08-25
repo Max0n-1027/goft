@@ -1,6 +1,7 @@
 package fsys
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"net/textproto"
@@ -222,4 +223,45 @@ func slicesContains(hay []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func TestNewRemoteOpensALocalDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "invoice.csv"), []byte("id\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fs, err := NewRemote(context.Background(), config.Remote{Protocol: config.ProtocolLocal, Path: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fs.Close()
+
+	// The engine cannot tell this from a connection, which is the point: a
+	// copy between two directories is an ordinary job.
+	entries, err := fs.List(context.Background(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name != "invoice.csv" {
+		t.Errorf("List() = %+v, want the one file in the directory", entries)
+	}
+	if fs.Describe() != dir {
+		t.Errorf("Describe() = %q, want %q", fs.Describe(), dir)
+	}
+}
+
+func TestResolveLocalReportsThePathAndNothingElse(t *testing.T) {
+	dir := t.TempDir()
+	res, err := Resolve(config.Remote{Protocol: config.ProtocolLocal, Path: dir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Trace) != 1 || res.Trace[0].Field != "path" || res.Trace[0].Value != dir {
+		t.Fatalf("trace = %+v, want just the path", res.Trace)
+	}
+	// Nothing is looked up: no ssh_config, no netrc, no credential store.
+	if res.Host != "" || res.Port != 0 || res.User != "" || res.Password.IsSet() {
+		t.Errorf("resolved = %+v, want no connection parameters", res)
+	}
 }
