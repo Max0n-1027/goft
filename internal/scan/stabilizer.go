@@ -15,8 +15,7 @@ type Stabilizer struct {
 	d   time.Duration
 	now func() time.Time
 
-	states  map[string]state
-	changed map[string]bool
+	states map[string]state
 }
 
 type state struct {
@@ -31,7 +30,7 @@ func NewStabilizer(d time.Duration, now func() time.Time) *Stabilizer {
 	if now == nil {
 		now = time.Now
 	}
-	return &Stabilizer{d: d, now: now, states: map[string]state{}, changed: map[string]bool{}}
+	return &Stabilizer{d: d, now: now, states: map[string]state{}}
 }
 
 // Observe records the current listing and returns the files that have settled.
@@ -39,7 +38,6 @@ func NewStabilizer(d time.Duration, now func() time.Time) *Stabilizer {
 func (s *Stabilizer) Observe(files []File) []File {
 	now := s.now()
 	next := make(map[string]state, len(files))
-	changed := make(map[string]bool, len(files))
 	stable := make([]File, 0, len(files))
 
 	for _, f := range files {
@@ -47,7 +45,6 @@ func (s *Stabilizer) Observe(files []File) []File {
 		switch {
 		case !seen || st.size != f.Size || !st.modTime.Equal(f.ModTime):
 			st = state{size: f.Size, modTime: f.ModTime, unchangedSince: now}
-			changed[f.Path] = true
 		default:
 			// unchanged: keep the original timestamp so the wait accumulates
 			// across cycles rather than restarting on every poll.
@@ -59,16 +56,8 @@ func (s *Stabilizer) Observe(files []File) []File {
 	}
 
 	s.states = next
-	s.changed = changed
 	return stable
 }
-
-// ChangedInLastCycle reports whether the most recent Observe saw this path for
-// the first time, or saw its size or modification time change.
-//
-// Callers use it to report a recurring condition (an oversized file, say) once
-// at warn level and at debug level on every cycle after that.
-func (s *Stabilizer) ChangedInLastCycle(path string) bool { return s.changed[path] }
 
 // Duration returns the configured settle duration.
 func (s *Stabilizer) Duration() time.Duration { return s.d }

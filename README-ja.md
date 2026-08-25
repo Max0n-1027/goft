@@ -198,7 +198,16 @@ jq -r 'select(.cycle_id == "6482c7d7-...")' goft.log
 
 詳細度の設定は `log.level` の1つだけで、両方の出力を制御します。各レベルで何が出るかは [goft.example.yaml](goft.example.yaml) 末尾の表を参照してください。
 
+実際のログを1行ずつ読み解いた例が [docs/log-example-ja.md](docs/log-example-ja.md) にあります。転送とそのハッシュ、スキップ、再送とその待ち時間、失敗、そして同じ実行を debug レベルで見た場合を扱っています。
+
 ## ドキュメント
+
+[docs/](docs/README-ja.md) 以下のページでは、実際の実行結果を使って挙動を解説しています。
+
+- [何が転送対象になるか](docs/file-selection-ja.md) — 名前・安定化・サイズ上限
+- [1ファイルが辿る道](docs/transfer-lifecycle-ja.md) — 一時名・検証・rename・転送後処理・再送
+- [ログを1行ずつ読む](docs/log-example-ja.md) — 実際のログをレコードごとに解説
+- [画面に出る内容](docs/console-output-ja.md) — `goft test`・`--dry-run`・転送
 
 コマンドと各パッケージの説明は `go doc` で読めます。
 
