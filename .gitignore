@@ -1,6 +1,7 @@
 # Build output. build.sh writes one binary per platform under here, which adds
 # up to tens of megabytes.
 /build/
+/dist/
 
 # Binaries from a plain `go build .` in the working directory.
 /goft

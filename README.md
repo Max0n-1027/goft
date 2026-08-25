@@ -370,3 +370,26 @@ VERSION=v1.0.0 ./build.sh linux/amd64 windows/amd64
 
 `goft version` reports what was stamped. Setting `SOURCE_DATE_EPOCH` makes the
 build reproducible. For a plain local build, `go build .` still works.
+
+### Releases
+
+Binaries are published on the [releases page](https://github.com/Max0n-1027/goft/releases):
+a versioned release for each `v*` tag, and `latest-main`, which is rebuilt on
+every push to `main` and is a prerelease rather than something to depend on.
+Each archive holds the binary, both READMEs, the licence and the example
+configuration, and `SHA256SUMS` covers them all:
+
+```bash
+tar xzf goft_v0.1.0_linux_amd64.tar.gz
+sudo install goft_v0.1.0_linux_amd64/goft /usr/local/bin/
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+[The workflow](.github/workflows/release.yml) runs `gofmt`, `go vet` and
+`go test -race` first, so a build that fails them is never published. It
+publishes what `./package.sh` produces, which is the same command to run by
+hand:
+
+```bash
+VERSION=v1.0.0 ./package.sh
+```

@@ -249,3 +249,21 @@ VERSION=v1.0.0 ./build.sh linux/amd64 windows/amd64
 ```
 
 埋め込まれた内容は `goft version` で確認できます。`SOURCE_DATE_EPOCH` を設定すると再現可能なビルドになります。手元で1つ作るだけなら `go build .` でも構いません。
+
+### リリース
+
+ビルド済みのバイナリは [リリースページ](https://github.com/Max0n-1027/goft/releases) で公開しています。`v*` タグごとのバージョン付きリリースと、`main` への push のたびに作り直される `latest-main` の2種類です。後者はプレリリース扱いで、依存する対象ではありません。
+
+各アーカイブには実行ファイル・両方の README・ライセンス・設定例が入っており、`SHA256SUMS` で照合できます。
+
+```bash
+tar xzf goft_v0.1.0_linux_amd64.tar.gz
+sudo install goft_v0.1.0_linux_amd64/goft /usr/local/bin/
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+[ワークフロー](.github/workflows/release.yml) は先に `gofmt`・`go vet`・`go test -race` を実行するので、これらが通らないビルドが公開されることはありません。公開しているのは `./package.sh` の出力そのもので、手元でも同じコマンドで再現できます。
+
+```bash
+VERSION=v1.0.0 ./package.sh
+```
