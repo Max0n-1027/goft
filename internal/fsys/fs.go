@@ -87,10 +87,19 @@ type FS interface {
 	Close() error
 }
 
-// transferredFileMode is the mode new files are created with. Data that goft
-// moves is usually read by something else afterwards, so it is created the way
-// scp or rsync would leave it rather than owner-only; the process umask still
-// applies on top. Windows ignores the mode entirely.
+// transferredFileMode is the mode new files are created with, by the
+// implementations that get to choose one: [Local] and the SMB share. Data that
+// goft moves is usually read by something else afterwards, so it is created the
+// way scp or rsync would leave it rather than owner-only; the process umask
+// still applies on top. Windows ignores the mode entirely, and a file written
+// there takes the permissions of the directory it lands in.
+//
+// sftp and ftp are not covered by this. Neither implementation sends a mode:
+// the protocols let one be given at creation, but the destination's own idea of
+// what a new file should look like is a better answer than a Unix mode invented
+// by the client. A Windows sftp server is the case in point — it discards the
+// mode and lets the file inherit the permissions of the directory it lands in,
+// which is what the operator set that directory up for.
 const transferredFileMode = 0o644
 
 // TempSuffix is appended while a transfer is in flight. A file carrying it is

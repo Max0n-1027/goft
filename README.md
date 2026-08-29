@@ -154,8 +154,46 @@ happened, so `post_action` does not run either, and the file will be examined
 again on every cycle. Use `post_action` (or `on_exists: overwrite`) if the
 sending directory should not keep growing.
 
-**Transferred files are created mode 0644**, subject to the process umask, so
-that whatever consumes them next can read them. Windows ignores the mode.
+**Who sets the mode of a transferred file depends on the destination.** Writing
+into a directory on this machine — `protocol: local` included — or onto an SMB
+share, goft creates the file 0644, subject to the process umask, so that
+whatever consumes it next can read it. Over sftp and ftp it sends no mode at
+all and the server decides: OpenSSH's sftp-server uses 0666 for a file the
+client gave no mode for. Windows has no modes to act on either way: a file
+written there, locally or by a Windows SFTP server, takes the permissions of
+the directory it lands in. Verified against OpenSSH 9.5p2 for Windows on
+Windows 11 — a file transferred into a directory carrying an inheritable grant
+came out with that grant, marked inherited, exactly like a subdirectory goft
+created alongside it.
+
+**A Windows destination has to grant its permissions to files, not only to
+folders.** An access rule carrying `(CI)` alone is inherited by subdirectories
+and not by the files in them, and `icacls upload /grant "group:(CI)(M)"` is an
+easy way to arrive at one. The directories goft creates then come out right
+while the files it writes inherit nothing, which is the shape of the problem
+seen from the outside. The transfer gets as far as putting the bytes there and
+fails after: creating the file is checked against the directory, and everything
+that follows against the file. With `verify: hash` it fails reading the file
+back; with `verify: length` or `none` it reaches the rename, which needs delete
+permission on the temporary file, and fails there. A plain `sftp put` neither
+reads back nor renames, so a directory set up this way looks fine until goft is
+pointed at it.
+
+Removing the temporary file is refused as well — logged as `could not remove
+temporary file` — so a `.goft.tmp` stays behind, and from the next cycle the
+write fails too, because the account cannot reopen the file it created itself.
+Grant `(OI)` alongside `(CI)`, push it down over what is already there, and
+clear what was left:
+
+```
+icacls C:\upload /grant "group:(OI)(CI)(M)" /T
+del /s C:\upload\*.goft.tmp
+```
+
+Verified the same way: same server, same non-administrator account, same job.
+With `(OI)(CI)` both files transfer; with `(CI)` alone both fail, at the
+verification or at the rename according to `verify`; and running those two
+commands over the failed state turns it back into a working one.
 
 **Windows refuses a name it would store as something else.** A file the server
 calls `2026:01.csv` cannot be written to a Windows disk under that name: the
