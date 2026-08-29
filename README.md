@@ -154,8 +154,19 @@ happened, so `post_action` does not run either, and the file will be examined
 again on every cycle. Use `post_action` (or `on_exists: overwrite`) if the
 sending directory should not keep growing.
 
-**Transferred files are created mode 0644**, subject to the process umask, so
-that whatever consumes them next can read them. Windows ignores the mode.
+**Who sets the mode of a transferred file depends on the destination.** Writing
+into a directory on this machine — `protocol: local` included — or onto an SMB
+share, goft creates the file 0644, subject to the process umask, so that
+whatever consumes it next can read it. Over sftp and ftp it sends no mode at
+all and the server decides: OpenSSH's sftp-server uses 0666 for a file the
+client gave no mode for. Windows has no modes to set either way; a file written
+there takes the permissions of the directory it lands in.
+
+A Windows SFTP server ignores the mode outright and creates the file so that it
+inherits the permissions of the directory it lands in, which is what one wants
+of it. Verified against OpenSSH 9.5p2 for Windows on Windows 11: a file
+transferred into a directory carrying an inheritable grant came out with that
+grant, marked inherited, exactly like a subdirectory goft created alongside it.
 
 **Windows refuses a name it would store as something else.** A file the server
 calls `2026:01.csv` cannot be written to a Windows disk under that name: the

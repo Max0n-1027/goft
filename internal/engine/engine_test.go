@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -423,5 +424,61 @@ func TestMissingSourceDirectoryIsReported(t *testing.T) {
 	})
 	if _, err := e.RunOnce(context.Background()); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("RunOnce() error = %v, want it to surface the missing directory", err)
+	}
+}
+
+// A destination the job can write to but not clear: the rename onto the
+// existing name is refused, and so is removing it to make way. Reporting only
+// the rename would send the operator looking at the wrong permission.
+func TestPublishReportsWhyTheDestinationCouldNotBeCleared(t *testing.T) {
+	h := newHarness(t)
+	h.cfg.OnExists = config.OnExistsOverwrite
+	h.write(h.srcDir, "a.csv", "new")
+	h.write(h.dstDir, "a.csv", "old")
+	h.dst.FailOp(fsys.OpRename, fmt.Errorf("rename: %w", fs.ErrPermission))
+	h.dst.FailOp(fsys.OpRemove, fmt.Errorf("unlink: %w", fs.ErrPermission))
+
+	s := h.run()
+
+	if s.Failed != 1 {
+		t.Fatalf("summary = %+v, want the file to fail", s)
+	}
+	r := h.result("a.csv")
+	if r.Err == nil {
+		t.Fatal("no error was reported")
+	}
+	for _, want := range []string{"rename", "unlink", "could not clear the destination"} {
+		if !strings.Contains(r.Err.Error(), want) {
+			t.Errorf("error %q does not mention %q", r.Err, want)
+		}
+	}
+	// Both are permission failures, and the classification has to survive the
+	// wrapping or the file would be attempted twice more for nothing.
+	if !errors.Is(r.Err, fs.ErrPermission) {
+		t.Errorf("%v no longer satisfies fs.ErrPermission", r.Err)
+	}
+	if got := h.read(h.dstDir, "a.csv"); got != "old" {
+		t.Errorf("destination = %q, want the file that was there left alone", got)
+	}
+}
+
+// When the destination can be cleared, the second rename is what publishes the
+// file, and nothing about the first failure is reported.
+func TestPublishRetriesTheRenameOnceCleared(t *testing.T) {
+	h := newHarness(t)
+	h.cfg.OnExists = config.OnExistsOverwrite
+	h.write(h.srcDir, "a.csv", "new")
+	h.write(h.dstDir, "a.csv", "old")
+	// One refusal, the way a server that will not rename onto a name that is
+	// taken answers; removing it clears the way.
+	h.dst.FailOpTimes(fsys.OpRename, errors.New("destination exists"), 1)
+
+	s := h.run()
+
+	if s.Failed != 0 || s.Succeeded != 1 {
+		t.Fatalf("summary = %+v, want the file to have been published", s)
+	}
+	if got := h.read(h.dstDir, "a.csv"); got != "new" {
+		t.Errorf("destination = %q, want it overwritten", got)
 	}
 }

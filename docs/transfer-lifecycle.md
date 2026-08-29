@@ -86,6 +86,12 @@ Only after verification passes. goft renames first, since a server that replaces
 the target atomically should be allowed to; if the server refuses to rename onto
 an existing name, the target is removed and the rename retried.
 
+When that removal is refused as well, both reasons are recorded — the rename
+error and, after it, `could not clear the destination first:` and the reason the
+target could not be removed. On a destination the job has lost the rights to,
+the two are different failures wearing the same words, and reporting only the
+first sends the reader looking at the wrong permission.
+
 The destination is checked once more immediately before this. The listing from
 step 2 is a snapshot of the start of the cycle, and under `on_exists: skip` a
 file that appeared in the meantime must not be overwritten — the temporary file

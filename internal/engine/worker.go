@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -259,8 +260,14 @@ func (e *Engine) publish(ctx context.Context, dst fsys.FS, tmp, name string) (sk
 		return false, nil
 	}
 	// Servers that refuse to rename onto an existing name need it cleared.
+	//
+	// Both reasons are reported when that does not work either. The rename says
+	// what was refused and the remove says why the way could not be cleared for
+	// it, and on a destination the job has lost the rights to they are
+	// different failures with the same wording. Reporting only the first sent
+	// an operator looking at the wrong thing.
 	if rmErr := dst.Remove(ctx, name); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
-		return false, err
+		return false, fmt.Errorf("%w (could not clear the destination first: %w)", err, rmErr)
 	}
 	return false, dst.Rename(ctx, tmp, name)
 }
