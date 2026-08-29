@@ -266,6 +266,12 @@ func (e *Engine) publish(ctx context.Context, dst fsys.FS, tmp, name string) (sk
 	// it, and on a destination the job has lost the rights to they are
 	// different failures with the same wording. Reporting only the first sent
 	// an operator looking at the wrong thing.
+	//
+	// Wrapping both also means [Retryable] sees both, so a permanent refusal to
+	// remove settles it even where the rename alone would have been retried.
+	// That is the wanted answer: this path is only reached on a server that
+	// will not rename onto a name that is taken, and it would refuse the same
+	// way on the next attempt.
 	if rmErr := dst.Remove(ctx, name); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
 		return false, fmt.Errorf("%w (could not clear the destination first: %w)", err, rmErr)
 	}

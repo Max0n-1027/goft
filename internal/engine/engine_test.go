@@ -431,7 +431,10 @@ func TestMissingSourceDirectoryIsReported(t *testing.T) {
 // existing name is refused, and so is removing it to make way. Reporting only
 // the rename would send the operator looking at the wrong permission.
 func TestPublishReportsWhyTheDestinationCouldNotBeCleared(t *testing.T) {
-	h := newHarness(t)
+	// Retrying is on so that the classification is exercised rather than
+	// asserted: with the harness default of one attempt, wrapping the errors in
+	// a way that loses fs.ErrPermission would not show up here.
+	h := withRetry(newHarness(t), 3)
 	h.cfg.OnExists = config.OnExistsOverwrite
 	h.write(h.srcDir, "a.csv", "new")
 	h.write(h.dstDir, "a.csv", "old")
@@ -456,6 +459,9 @@ func TestPublishReportsWhyTheDestinationCouldNotBeCleared(t *testing.T) {
 	// wrapping or the file would be attempted twice more for nothing.
 	if !errors.Is(r.Err, fs.ErrPermission) {
 		t.Errorf("%v no longer satisfies fs.ErrPermission", r.Err)
+	}
+	if r.Attempts != 1 {
+		t.Errorf("attempts = %d, want 1: neither refusal would go differently next time", r.Attempts)
 	}
 	if got := h.read(h.dstDir, "a.csv"); got != "old" {
 		t.Errorf("destination = %q, want the file that was there left alone", got)
