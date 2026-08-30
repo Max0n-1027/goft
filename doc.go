@@ -22,7 +22,10 @@ which: everything below is the same either way.
 For every file it finds on the sending side, goft waits until the file has
 stopped changing, writes it to the receiving side under a temporary name,
 verifies it, renames it onto its final name only once verification passed, and
-then applies the configured post-transfer action to the source. A file
+then applies the configured post-transfer action to the source. With
+remove_empty_dirs it also removes a sending directory that the transfer took the
+last file out of, and its parent if that leaves it empty; the sending root
+itself is never removed. A file
 therefore only appears under its real name on the receiving side once it is
 complete and verified; a process killed mid-transfer leaves nothing behind but
 a .goft.tmp file, which the next run overwrites.

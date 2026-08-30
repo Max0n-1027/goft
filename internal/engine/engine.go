@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"sync"
 	"time"
@@ -251,10 +253,17 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		return s, err
 	}
 	s.Elapsed = e.now().Sub(start)
-	e.log.Info("cycle complete",
+	summary := []any{
 		logging.KeyEvent, logging.EventSummary,
 		"files", s.Total, "succeeded", s.Succeeded, "skipped", s.Skipped, "failed", s.Failed,
-		logging.KeyBytes, s.Bytes, logging.KeyDurationMS, s.Elapsed.Milliseconds())
+		logging.KeyBytes, s.Bytes, logging.KeyDurationMS, s.Elapsed.Milliseconds(),
+	}
+	if s.DirsRemoved > 0 {
+		// Only when it happened: a job that does not prune should not carry a
+		// zero for it in every summary it ever writes.
+		summary = append(summary, "dirs_removed", s.DirsRemoved)
+	}
+	e.log.Info("cycle complete", summary...)
 	if e.opts.OnSummary != nil {
 		e.opts.OnSummary(s)
 	}
@@ -319,8 +328,64 @@ func (e *Engine) dispatch(ctx context.Context, conns []*conn, targets []target, 
 		})
 	}
 
-	err := g.Wait()
-	return collector.Summary(), err
+	if err := g.Wait(); err != nil {
+		return collector.Summary(), err
+	}
+
+	summary := collector.Summary()
+	summary.DirsRemoved = e.pruneEmptied(ctx, conns[0], collector.Emptied())
+	return summary, nil
+}
+
+// pruneEmptied removes the sending side's directories that this cycle took the
+// last file out of.
+//
+// Only directories a file was actually moved out of are considered, and only
+// while they are still empty when the time comes: a directory that was already
+// empty before the cycle, or that something else has written to since, is left
+// alone. The sending root is never a candidate, since a job whose own directory
+// disappears has nothing to watch.
+//
+// Failing to remove one is a warning rather than a failure. The files reached
+// the destination, which is the job; a directory that could not be tidied away
+// will be tried again next cycle.
+func (e *Engine) pruneEmptied(ctx context.Context, c *conn, dirs []string) int {
+	if !e.cfg.RemoveEmptyDirs || e.cfg.PostAction == config.PostNone || len(dirs) == 0 {
+		return 0
+	}
+	if err := c.ensure(ctx); err != nil {
+		e.log.Warn("could not reach the sending side to remove empty directories",
+			logging.KeyEvent, logging.EventPostAction, logging.KeyError, err.Error())
+		return 0
+	}
+
+	removed := 0
+	for _, dir := range dirs {
+		entries, err := c.src.List(ctx, dir)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			// Something else removed it first, which is the outcome anyway.
+			continue
+		case err != nil:
+			e.log.Warn("could not list a directory to see whether it is empty",
+				logging.KeyEvent, logging.EventPostAction,
+				logging.KeySrc, e.source(dir), logging.KeyError, err.Error())
+			continue
+		case len(entries) > 0:
+			continue
+		}
+
+		if err := c.src.Remove(ctx, dir); err != nil {
+			e.log.Warn("could not remove an empty directory",
+				logging.KeyEvent, logging.EventPostAction,
+				logging.KeySrc, e.source(dir), logging.KeyError, err.Error())
+			continue
+		}
+		removed++
+		e.log.Info("removed empty directory",
+			logging.KeyEvent, logging.EventPostAction, logging.KeySrc, e.source(dir))
+	}
+	return removed
 }
 
 // conn is one worker's pair of connections, which it can rebuild.

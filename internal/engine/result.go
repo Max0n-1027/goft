@@ -24,9 +24,11 @@ package engine
 
 import (
 	"log/slog"
+	"sort"
 	"sync"
 	"time"
 
+	"goft/internal/fsys"
 	"goft/internal/scan"
 )
 
@@ -86,6 +88,19 @@ type Result struct {
 	Recurring bool
 }
 
+// sourceGone reports whether the post-transfer action took the file off the
+// sending side.
+//
+// A skip for a file that is already at the destination is not one of these: no
+// transfer happened, so the source was left alone, and the directory holding it
+// is no emptier than it was.
+func (r Result) sourceGone() bool {
+	if r.postActionFailed {
+		return false
+	}
+	return r.Outcome == Success || (r.Outcome == Skipped && r.Reason == ReasonIdentical)
+}
+
 // Level is the severity this result is reported at. Both the JSON log and the
 // console use it, which is what keeps the single verbosity knob honest.
 func (r Result) Level() slog.Level {
@@ -114,6 +129,9 @@ type Summary struct {
 	Bytes int64
 	// Elapsed is how long the cycle took from scan to summary.
 	Elapsed time.Duration
+	// DirsRemoved counts the directories the cycle emptied and then removed,
+	// which only happens with remove_empty_dirs.
+	DirsRemoved int
 	// PlannedOnly marks a dry run, where nothing was sent and the counts
 	// describe what would have been.
 	PlannedOnly bool
@@ -123,6 +141,9 @@ type Summary struct {
 type Collector struct {
 	mu sync.Mutex
 	s  Summary
+	// emptied holds the directories a file was taken out of, which is where an
+	// empty one can have appeared.
+	emptied map[string]bool
 }
 
 // Add folds one result into the summary.
@@ -139,6 +160,44 @@ func (c *Collector) Add(r Result) {
 	case Failed:
 		c.s.Failed++
 	}
+	if r.sourceGone() {
+		if dir := fsys.Dir(r.Path); dir != "" {
+			if c.emptied == nil {
+				c.emptied = map[string]bool{}
+			}
+			c.emptied[dir] = true
+		}
+	}
+}
+
+// Emptied lists the directories the cycle took a file out of, deepest first so
+// that a parent is considered only once its children have been dealt with.
+//
+// Every directory on the way up to the root is included, because removing the
+// last subdirectory of a directory empties that one too.
+func (c *Collector) Emptied() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	all := map[string]bool{}
+	for dir := range c.emptied {
+		for d := dir; d != ""; d = fsys.Dir(d) {
+			all[d] = true
+		}
+	}
+
+	dirs := make([]string, 0, len(all))
+	for d := range all {
+		dirs = append(dirs, d)
+	}
+	sort.Slice(dirs, func(i, j int) bool {
+		di, dj := len(fsys.Segments(dirs[i])), len(fsys.Segments(dirs[j]))
+		if di != dj {
+			return di > dj
+		}
+		return dirs[i] < dirs[j]
+	})
+	return dirs
 }
 
 // Summary returns the aggregate so far.

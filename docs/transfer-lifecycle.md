@@ -119,6 +119,39 @@ connection. It does not cause the file to be transferred again: the file
 arrived, and sending it a second time would be worse than leaving the source in
 place.
 
+## 7. Empty directories
+
+With `remove_empty_dirs`, a subdirectory that the transfer has just taken the
+last file out of is removed, and its parent too if that leaves it empty:
+
+```jsonl
+{"time":"2026-08-30T19:34:24.849405311+09:00","level":"INFO","msg":"removed empty directory","job":"invoice-archive","direction":"send","cycle_id":"83471e30-674e-44fe-8571-fbe34e98caab","event":"postaction","src":"/data/out/invoice/2026-08/day-01"}
+{"time":"2026-08-30T19:34:24.849418141+09:00","level":"INFO","msg":"removed empty directory","job":"invoice-archive","direction":"send","cycle_id":"83471e30-674e-44fe-8571-fbe34e98caab","event":"postaction","src":"/data/out/invoice/2026-08"}
+{"time":"2026-08-30T19:34:24.849427315+09:00","level":"INFO","msg":"cycle complete","job":"invoice-archive","direction":"send","cycle_id":"83471e30-674e-44fe-8571-fbe34e98caab","event":"summary","files":2,"succeeded":2,"skipped":0,"failed":0,"bytes":34,"duration_ms":1001,"dirs_removed":2}
+```
+
+Both records name the directory in full, and the summary counts them in
+`dirs_removed`, which is written only when something was removed.
+
+Four things it will not do:
+
+- **The sending root is never removed.** A watching job whose own directory
+  disappeared would have nothing to watch.
+- **A directory goft did not empty is left alone.** One that was already empty
+  before the cycle, or that something else has written to since, is not its
+  business.
+- **A directory that is not empty when the time comes is left alone**, and it is
+  listed to find that out rather than the removal being attempted and left to
+  the far side to refuse.
+- **It does not fail the transfer.** A directory that could not be removed is a
+  warning; the files arrived, which is the job, and the next cycle will try the
+  tidying up again.
+
+The option needs `post_action: delete` or `move` — with `none` the source files
+stay where they are, so no directory ever becomes empty — and that is a
+configuration error rather than a setting that quietly does nothing. Without
+`recursive` it has nothing to do either, which is reported as a warning.
+
 ## When it fails
 
 Within a cycle a file is attempted up to `retry.max_attempts` times (3 by

@@ -154,6 +154,14 @@ happened, so `post_action` does not run either, and the file will be examined
 again on every cycle. Use `post_action` (or `on_exists: overwrite`) if the
 sending directory should not keep growing.
 
+**Empty directories are only removed if you ask.** With `remove_empty_dirs`, a
+subdirectory this cycle took the last file out of is removed, and its parent too
+if that leaves it empty. The sending root is never removed, and neither is a
+directory goft did not empty — one that was already empty, or that something
+wrote to in the meantime, is left alone. It needs `post_action: delete` or
+`move`, since with `none` the source files stay where they are. See
+[The life of one file](docs/transfer-lifecycle.md).
+
 **Who sets the mode of a transferred file depends on the destination.** Writing
 into a directory on this machine — `protocol: local` included — or onto an SMB
 share, goft creates the file 0644, subject to the process umask, so that
