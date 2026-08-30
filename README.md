@@ -420,8 +420,11 @@ build reproducible. For a plain local build, `go build .` still works.
 ### Releases
 
 Binaries are published on the [releases page](https://github.com/Max0n-1027/goft/releases):
-a versioned release for each `v*` tag, and `latest-main`, which is rebuilt on
-every push to `main` and is a prerelease rather than something to depend on.
+a versioned release for each `v*` tag, and a prerelease named
+`main-<date>-<commit>` for every push to `main`. The latter are builds rather
+than releases — unsupported, superseded by the next commit — and only the five
+most recent are kept.
+
 Each archive holds the binary, both READMEs, the licence and the example
 configuration, and `SHA256SUMS` covers them all:
 

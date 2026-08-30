@@ -1,8 +1,8 @@
 # Builds goft and publishes the binaries.
 #
-# A push to main updates the rolling latest-main prerelease; a v* tag creates
-# the release for that version. Both publish the same archives, built by the
-# same scripts a person would run locally.
+# A push to main publishes a prerelease of that commit; a v* tag creates the
+# release for that version. Both publish the same archives, built by the same
+# scripts a person would run locally.
 name: release
 
 on:
@@ -79,25 +79,44 @@ jobs:
           gh release create "$TAG" --title "goft $TAG" \
             --notes "$(cat notes.md)" --generate-notes dist/*
 
-      - name: Update the rolling build of main
+      # Every build gets its own tag rather than one being moved along. This
+      # repository publishes immutable releases, where the tag of a published
+      # release can never be used again — not even after the release is deleted
+      # — so the rolling tag this once used could be created exactly once.
+      - name: Publish this build of main
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
         run: |
+          short=$(git rev-parse --short "$SHA")
+          tag="main-$(date -u +%Y%m%d)-${short}"
           {
-            echo "The latest build of \`main\`, replaced on every push. It is not a release:"
-            echo "the commit behind this tag changes, and so does what you downloaded."
+            echo "A build of \`main\`, published on every push. It is not a release:"
+            echo "nothing here is supported, and the next commit supersedes it."
             echo "For something stable, take a versioned release instead."
             echo
             echo "Built from ${SHA} on $(date -u +%Y-%m-%dT%H:%M:%SZ)."
             echo
             echo "Verify what you downloaded with \`sha256sum -c SHA256SUMS --ignore-missing\`."
           } > notes.md
-          # Deleting first is what moves the tag: a release keeps pointing at
-          # the commit its tag was created on, however many times its assets
-          # are replaced.
-          gh release delete latest-main --yes --cleanup-tag || true
-          gh release create latest-main --prerelease --latest=false \
-            --target "$SHA" --title "Latest main" \
+          gh release create "$tag" --prerelease --latest=false \
+            --target "$SHA" --title "main ${short}" \
             --notes "$(cat notes.md)" dist/*
+
+      # One release per push would otherwise pile up unread. The tags stay
+      # behind, since an immutable release's tag cannot be removed, but the
+      # releases page keeps to the handful anyone might want.
+      - name: Retire the older builds of main
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          KEEP: "5"
+        run: |
+          gh release list --limit 100 --json tagName,createdAt,isPrerelease \
+            --jq "[.[] | select(.isPrerelease and (.tagName | startswith(\"main-\")))]
+                  | sort_by(.createdAt) | reverse | .[${KEEP}:] | .[].tagName" |
+            while read -r old; do
+              # Tidying up is not worth failing a published build over.
+              gh release delete "$old" --yes || echo "could not delete $old"
+            done
