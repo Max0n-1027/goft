@@ -87,6 +87,14 @@ on_exists: skip
 post_action: move
 move_to: /data/done/invoice   # required for move; must not be inside local.path
 
+# Remove a subdirectory of the sending side once the transfer has taken the
+# last file out of it, and its parent too if that leaves it empty. The sending
+# root itself is never removed, and neither is a directory goft did not empty:
+# one that was already empty, or that something wrote to in the meantime, is
+# left alone. Needs post_action delete or move, since with none the source
+# files stay where they are.
+remove_empty_dirs: false
+
 # --- Retrying a failed file. ---
 
 # A file that fails is attempted again within the same cycle, but only when the

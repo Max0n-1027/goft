@@ -382,3 +382,47 @@ func TestRemoteDescribeRendersALocalPathAsItself(t *testing.T) {
 		t.Errorf("Describe() = %q, want an absolute path", got)
 	}
 }
+
+func TestValidateRejectsPruningWithoutAPostAction(t *testing.T) {
+	// With post_action: none the source files stay where they are, so no
+	// directory ever becomes empty and the setting would quietly do nothing.
+	cfg := validConfig(t.TempDir())
+	cfg.RemoveEmptyDirs = true
+	cfg.PostAction = PostNone
+
+	err := Validate(cfg)
+	if err == nil || !strings.Contains(err.Error(), "remove_empty_dirs") {
+		t.Fatalf("Validate() = %v, want remove_empty_dirs reported", err)
+	}
+
+	cfg.PostAction = PostDelete
+	if err := Validate(cfg); err != nil {
+		t.Errorf("Validate() = %v, want delete to be accepted", err)
+	}
+}
+
+func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	cfg.RemoveEmptyDirs = true
+	cfg.PostAction = PostDelete
+	cfg.Recursive = false
+
+	var found bool
+	for _, w := range Warnings(cfg) {
+		if strings.Contains(w, "remove_empty_dirs") {
+			found = true
+		}
+	}
+	if !found {
+		// Only subdirectories are ever removed, and without recursion none are
+		// visited, so the setting is a no-op worth saying out loud.
+		t.Errorf("Warnings() = %v, want the no-op reported", Warnings(cfg))
+	}
+
+	cfg.Recursive = true
+	for _, w := range Warnings(cfg) {
+		if strings.Contains(w, "remove_empty_dirs") {
+			t.Errorf("warning %q should not appear with recursion on", w)
+		}
+	}
+}

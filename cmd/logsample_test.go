@@ -531,3 +531,67 @@ log:
 	}
 	save("local-copy.log", string(log), false)
 }
+
+// TestGeneratePruningSample writes the records quoted in the empty-directory
+// section of docs/transfer-lifecycle.md.
+func TestGeneratePruningSample(t *testing.T) {
+	out := os.Getenv("GOFT_LOG_SAMPLE")
+	if out == "" {
+		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
+	}
+
+	src := t.TempDir()
+	dst := t.TempDir()
+	logFile := filepath.Join(t.TempDir(), "invoice-archive.log")
+
+	for _, name := range []string{"2026-08/day-01/invoice_01.csv", "2026-08/day-01/invoice_02.csv"} {
+		p := filepath.Join(src, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("id,amount\n1,1200\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cfg := filepath.Join(t.TempDir(), "job.yaml")
+	body := fmt.Sprintf(`
+name: invoice-archive
+local:
+  path: %s
+remote:
+  protocol: local
+  path: %s
+recursive: true
+include: ["*.csv"]
+stable_duration: 1s
+workers: 1
+verify: hash
+on_exists: skip
+post_action: delete
+remove_empty_dirs: true
+log:
+  path: %s
+  level: info
+`, src, dst, logFile)
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resetFlags()
+	rootCmd.SetArgs([]string{"send", "-c", cfg, "--no-console"})
+	rootCmd.SetOut(os.Stdout)
+	Execute()
+
+	log, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ReplaceAll(string(log), src, "/data/out/invoice")
+	text = strings.ReplaceAll(text, dst, "/backup/invoice")
+	text = strings.ReplaceAll(text, cfg, "/etc/goft/invoice-archive.yaml")
+	text = strings.ReplaceAll(text, logFile, "/var/log/goft/invoice-archive.log")
+	if err := os.WriteFile(filepath.Join(out, "pruning.log"), []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}

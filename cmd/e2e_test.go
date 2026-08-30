@@ -404,3 +404,38 @@ func TestTestCommandReportsAReadOnlyLocalDirectory(t *testing.T) {
 		t.Errorf("output does not say which direction is affected:\n%s", out.String())
 	}
 }
+
+func TestSendRemovesTheDirectoryItEmptied(t *testing.T) {
+	s := newScenario(t, "recursive: true\npost_action: delete\nremove_empty_dirs: true\n")
+	s.writeLocal("2026-08/invoice.csv", "id,amount\n1,100\n")
+
+	if code := s.run("send", "--no-console"); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if got := s.readRemote("2026-08/invoice.csv"); got != "id,amount\n1,100\n" {
+		t.Errorf("remote content = %q", got)
+	}
+	if exists(t, filepath.Join(s.localDir, "2026-08")) {
+		t.Error("the directory the transfer emptied should have been removed")
+	}
+	if !exists(t, s.localDir) {
+		t.Error("the watched directory itself must survive: the job has nothing to watch otherwise")
+	}
+}
+
+func TestRecvRemovesTheRemoteDirectoryItEmptied(t *testing.T) {
+	// The tidying up goes over the protocol like everything else, so it is
+	// worth proving against a real server rather than only over a local disk.
+	s := newScenario(t, "recursive: true\npost_action: delete\nremove_empty_dirs: true\n")
+	s.writeRemote("2026-08/report.csv", "downloaded\n")
+
+	if code := s.run("recv", "--no-console"); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if got := s.readLocal("2026-08/report.csv"); got != "downloaded\n" {
+		t.Errorf("local content = %q", got)
+	}
+	if exists(t, filepath.Join(s.remoteDir, "2026-08")) {
+		t.Error("the emptied directory should have been removed from the server")
+	}
+}

@@ -180,6 +180,10 @@ func validateTransfer(c *Config, add addFunc) {
 		}
 	}
 
+	if c.RemoveEmptyDirs && c.PostAction == PostNone {
+		add("remove_empty_dirs needs post_action delete or move: with none the source files stay where they are, so no directory ever becomes empty")
+	}
+
 	if c.Retry.MaxAttempts < 1 {
 		add("retry.max_attempts must be >= 1 (1 disables retrying)")
 	}
@@ -237,6 +241,9 @@ func Warnings(c *Config) []string {
 	}
 	if c.Remote.InsecureSkipHostKeyCheck {
 		w = append(w, "insecure_skip_host_key_check is enabled: the remote host key is not verified")
+	}
+	if c.RemoveEmptyDirs && !c.Recursive {
+		w = append(w, "remove_empty_dirs has nothing to do without recursive: only subdirectories are removed, and without recursion none are visited")
 	}
 	return w
 }

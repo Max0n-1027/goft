@@ -276,6 +276,10 @@ type Config struct {
 	// MoveTo receives the source file when PostAction is move. It must not be
 	// inside Local.Path, or the moved files would be transferred again.
 	MoveTo string `mapstructure:"move_to"`
+	// RemoveEmptyDirs deletes a subdirectory of the sending side once the
+	// transfer has taken the last file out of it. The sending root itself is
+	// never removed, and neither is a directory goft did not empty.
+	RemoveEmptyDirs bool `mapstructure:"remove_empty_dirs"`
 
 	// Retry decides how a failed file is attempted again.
 	Retry Retry `mapstructure:"retry"`
@@ -300,6 +304,7 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("verify", string(VerifyHash))
 	v.SetDefault("on_exists", string(OnExistsSkip))
 	v.SetDefault("post_action", string(PostNone))
+	v.SetDefault("remove_empty_dirs", false)
 	v.SetDefault("retry.max_attempts", 3)
 	v.SetDefault("retry.interval", "2s")
 	v.SetDefault("retry.backoff", 2.0)
