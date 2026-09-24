@@ -49,13 +49,29 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # The version is decided here rather than left to git describe. A v* tag
+      # always lands on a commit of main that the push to main has already
+      # tagged main-<date>-<commit>, and describe picked that one: v0.2.0 went
+      # out stamped and named as a build of main.
+      - name: Decide the version
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            version="$GITHUB_REF_NAME"
+          else
+            version="main-$(date -u +%Y%m%d)-$(git rev-parse --short HEAD)"
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
       - name: Build and package
         run: ./package.sh
 
-      # Cheap proof that what is about to be published is not a broken binary:
-      # the tests ran against the source, not against this build.
-      - name: Check the binary runs
-        run: ./build/linux/amd64/goft version
+      # Cheap proof that what is about to be published is not a broken binary,
+      # and that it says the version it is published as: the tests ran against
+      # the source, not against this build.
+      - name: Check the binary runs and names its version
+        run: |
+          ./build/linux/amd64/goft version | tee version.txt
+          grep -q "^goft ${VERSION} " version.txt
 
       - name: Publish the release for this tag
         if: startsWith(github.ref, 'refs/tags/v')
@@ -90,7 +106,7 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           short=$(git rev-parse --short "$SHA")
-          tag="main-$(date -u +%Y%m%d)-${short}"
+          tag="$VERSION"
           {
             echo "A build of \`main\`, published on every push. It is not a release:"
             echo "nothing here is supported, and the next commit supersedes it."

@@ -12,7 +12,8 @@
 #   build/windows/amd64/goft.exe
 #
 # Environment:
-#   VERSION   version stamped into the binary (default: git describe, or "dev")
+#   VERSION   version stamped into the binary (default: git describe against
+#             the v* tags, or "dev")
 #   OUT_DIR   root of the output tree (default: build)
 #   LDFLAGS   extra linker flags, appended to the ones set here
 
@@ -49,7 +50,7 @@ stamp() {
     commit=none
 
     if git rev-parse --git-dir >/dev/null 2>&1; then
-        [ -n "$version" ] || version=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+        [ -n "$version" ] || version=$(git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
         commit=$(git rev-parse --short HEAD 2>/dev/null || echo none)
     fi
     [ -n "$version" ] || version=dev
