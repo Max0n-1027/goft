@@ -166,29 +166,44 @@ func (s *smbFS) Write(_ context.Context, name string, r io.Reader) (int64, error
 
 // MkdirAll implements FS. The share only creates one level at a time.
 //
+// The root is included. It used to be created only on the way to a
+// subdirectory, so a destination that did not exist yet failed on the first
+// transfer whenever the files went straight into it — despite goft test having
+// said it would be created.
+func (s *smbFS) MkdirAll(_ context.Context, dir string) error {
+	return s.mkdirAll(s.abs(dir))
+}
+
+// mkdirAll creates p, and its parents only if they turn out to be missing, so
+// that the usual case — a new directory in one that exists — costs one round
+// trip rather than one per level of the path.
+//
 // A level Mkdir refuses is fine only if a directory is what holds that name.
 // "Already exists" is also the answer for a file in the way, and taking that
 // for success sent the job on to a write that failed with the reason gone.
-func (s *smbFS) MkdirAll(_ context.Context, dir string) error {
-	if dir == "" {
+func (s *smbFS) mkdirAll(p string) error {
+	if p == "" || p == "." {
+		return nil // the share itself
+	}
+	err := s.share.Mkdir(p, 0o755)
+	if err == nil {
 		return nil
 	}
-	var built string
-	for _, part := range Segments(path.Join(s.root, dir)) {
-		built = path.Join(built, part)
-		err := s.share.Mkdir(built, 0o755)
-		if err == nil {
-			continue
+	if fi, statErr := s.share.Stat(p); statErr == nil {
+		if fi.IsDir() {
+			return nil
 		}
-		fi, statErr := s.share.Stat(built)
-		switch {
-		case statErr != nil:
-			return err
-		case !fi.IsDir():
-			return fmt.Errorf("%s is a file, not a directory: %w", built, fs.ErrExist)
+		return fmt.Errorf("%s is a file, not a directory: %w", p, fs.ErrExist)
+	}
+	if parent := path.Dir(p); parent != "." && parent != p {
+		if perr := s.mkdirAll(parent); perr != nil {
+			return perr
+		}
+		if err = s.share.Mkdir(p, 0o755); err == nil {
+			return nil
 		}
 	}
-	return nil
+	return err
 }
 
 // Rename implements FS.

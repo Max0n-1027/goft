@@ -175,29 +175,46 @@ func (f *ftpFS) Write(_ context.Context, name string, r io.Reader) (int64, error
 }
 
 // MkdirAll implements FS. FTP only creates one directory at a time, and
-// reports an error when it already exists, so each level is attempted in turn
-// and existing levels are tolerated.
+// reports an error when it already exists.
 //
-// Whether a level that MKD refused is in fact there is decided by dirExists,
-// not by listing it. A listing proves nothing on vsftpd, which answers LIST of
-// a path that does not exist with an empty listing, and elsewhere a listing of
-// a file succeeds too; either way MKD's real reason for refusing was dropped
-// and surfaced later as a write that could not create its file.
-func (f *ftpFS) MkdirAll(ctx context.Context, dir string) error {
-	if dir == "" {
+// The root is included. goft test tells the operator a missing destination
+// will be created on the first transfer, and walking only the levels below the
+// root made that untrue: every file failed, and with vsftpd hiding the reason
+// behind "553 Could not create file".
+//
+// Whether a level MKD refused is in fact there is decided by dirExists, not by
+// listing it. A listing proves nothing on vsftpd, which answers LIST of a path
+// that does not exist with an empty listing, and elsewhere a listing of a file
+// succeeds too; either way MKD's real reason for refusing was dropped.
+func (f *ftpFS) MkdirAll(_ context.Context, dir string) error {
+	return f.mkdirAll(f.abs(dir))
+}
+
+// mkdirAll creates abs, and its parents only if MKD says they are missing, so
+// that the usual case — a new directory in one that exists — costs one round
+// trip rather than one per level of the path.
+func (f *ftpFS) mkdirAll(abs string) error {
+	err := f.conn.MakeDir(abs)
+	if err == nil || f.isDir(abs) {
 		return nil
 	}
-	var built string
-	for _, part := range Segments(dir) {
-		built = path.Join(built, part)
-		if err := f.conn.MakeDir(f.abs(built)); err != nil {
-			exists, existsErr := f.dirExists(f.abs(built))
-			if existsErr != nil || !exists {
-				return translateFTPError(err)
-			}
-		}
+	parent := path.Dir(abs)
+	if parent == abs || parent == "." || parent == "/" {
+		return translateFTPError(err)
+	}
+	if perr := f.mkdirAll(parent); perr != nil {
+		return perr
+	}
+	if err := f.conn.MakeDir(abs); err != nil && !f.isDir(abs) {
+		return translateFTPError(err)
 	}
 	return nil
+}
+
+// isDir reports whether abs is known to be a directory.
+func (f *ftpFS) isDir(abs string) bool {
+	exists, err := f.dirExists(abs)
+	return err == nil && exists
 }
 
 // Rename implements FS.

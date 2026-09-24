@@ -8,7 +8,12 @@ the other way round, and everything below is the same in both directions.
 ## 1. The destination directory
 
 The parent directory is created if the cycle's listing showed it missing, once
-per directory rather than once per file.
+per directory rather than once per file. That includes the destination itself:
+for `send`, `remote.path` need not exist before the first transfer, and whatever
+levels of it are missing are created, on every protocol. (`local.path` is
+checked at startup and has to exist, for `recv` as well.)
+A directory is created in one request when its parent exists, and the missing
+parents are only worked out when it does not.
 
 ## 2. Is it already there?
 
