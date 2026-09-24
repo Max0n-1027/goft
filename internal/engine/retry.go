@@ -7,6 +7,12 @@ import (
 	"net/textproto"
 )
 
+// ErrSourceChanged reports a source file that changed between settling and the
+// end of its transfer: its writer was still at work. Nothing that was read is
+// published under the real name, and a source in that state is never deleted or
+// moved.
+var ErrSourceChanged = errors.New("the source changed while it was being transferred")
+
 // Retryable reports whether another attempt at err could plausibly succeed.
 //
 // The classification is by exclusion: a small set of errors is known to be
@@ -22,7 +28,9 @@ import (
 //   - the credentials do not allow it,
 //   - the destination already holds a file the action refuses to replace,
 //   - the receiving file system cannot hold a file under that name,
-//   - the server gave a 5xx reply, which FTP defines as a permanent negative.
+//   - the server gave a 5xx reply, which FTP defines as a permanent negative,
+//   - the source changed while it was being sent, which settling on a later
+//     cycle deals with rather than an immediate retry.
 //
 // Verification failures are deliberately absent: a hash mismatch can come from
 // corruption in flight, which is precisely what a second attempt fixes.
@@ -40,6 +48,10 @@ func Retryable(err error) bool {
 	case errors.Is(err, fs.ErrExist):
 		return false
 	case errors.Is(err, fs.ErrInvalid):
+		return false
+	case errors.Is(err, ErrSourceChanged):
+		// Trying again at once would find the writer still at work. The next
+		// cycle's settling is what decides when the file is ready.
 		return false
 	}
 

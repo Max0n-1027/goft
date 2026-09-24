@@ -80,6 +80,20 @@ unnoticed. Hashing while streaming costs no extra I/O.
 `hash_src` and `hash_dst` are recorded at info level, so the log alone shows
 that a file arrived intact.
 
+Verification compares what was read with what was written, so on its own it
+cannot tell that the source's writer was still at work: both sides hold the same
+bytes, just not the whole file. The number of bytes read is therefore also
+checked against the size the file settled at. If they differ, the temporary file
+is discarded, nothing appears under the real name, and the file is recorded as
+failed:
+
+```
+the source changed while it was being transferred: 1048576 bytes when it settled, 1310720 read
+```
+
+It is not retried at once, since the writer would most likely still be at it.
+The next cycle's settling decides when the file is ready.
+
 ## 5. Renamed into place
 
 Only after verification passes. goft renames first, since a server that replaces
@@ -118,6 +132,22 @@ A post-transfer action that fails is retried on its own, with a fresh
 connection. It does not cause the file to be transferred again: the file
 arrived, and sending it a second time would be worse than leaving the source in
 place.
+
+`delete` and `move` take the source away, so before either of them the source
+is looked at again. It is looked at once right after it was read and once more
+just before the action, and if its size or timestamp moved in between — a writer
+appended while the file was being verified and published — the source is left
+where it is and the file is recorded as failed:
+
+```
+the source changed while it was being transferred: it was modified after being sent, so it was left in place (1048576 bytes then, 1310720 now)
+```
+
+What was sent did arrive, but deleting the source now would throw away data
+that never reached the destination. The same check guards a file that
+`on_exists: overwrite` found identical, against the size it was compared at.
+These looks cost two extra requests per file, and only when the action deletes
+or moves the source.
 
 ## 7. Empty directories
 
@@ -168,8 +198,10 @@ between:
 Only failures that could plausibly succeed next time are retried. A dropped
 connection, a timeout or a failed verification is; a missing file, a permission
 error, an existing-file error or a 5xx reply from an FTP server is not, because
-the next attempt would fail identically. The classification is by exclusion:
-anything not known to be permanent is treated as worth another try.
+the next attempt would fail identically. Nor is a source that changed while it
+was sent: its writer is most likely still at it, and settling on the next cycle
+is the better judge. The classification is by exclusion: anything not known to
+be permanent is treated as worth another try.
 
 One file failing does not stop the cycle. The others carry on, the summary
 counts the failures, and `send`/`recv` exit 1 — as opposed to exit 2, which

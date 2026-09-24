@@ -144,6 +144,15 @@ because tools that preserve timestamps (`cp -p`, `rsync --times`) leave the
 modification time at the source file's old value while the copy is still
 running.
 
+**A file that changes during its transfer is neither published nor removed.**
+Settling can be fooled by a writer that pauses for longer than
+`stable_duration` and then carries on. So the bytes read are also checked
+against the size the file settled at, and nothing is published under the real
+name if they differ. When `post_action` would delete or move the source, the
+source is looked at once more just before, and one that has changed since it
+was sent is left where it is. Either way the file is recorded as failed, is not
+retried at once, and the next cycle's settling decides when to try again.
+
 **FTP timestamps are coarse.** FTP has no stat command; the modification time
 comes from `MLST` where the server supports it and from a directory listing
 otherwise, which can be accurate only to the minute. Allow for that in

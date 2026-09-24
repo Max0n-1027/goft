@@ -113,6 +113,16 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		// as far as the source is concerned. The digests that settled it are
 		// recorded, because "not sent" needs its evidence as much as "sent".
 		res.SrcHash, res.DstHash, res.Hashed = cmp.SrcHash, cmp.DstHash, cmp.Hashed
+		if e.consumesSource() {
+			// The comparison was made against the size the scan saw. A source
+			// that has grown or shrunk since is not the file that was compared.
+			if err := e.step(ctx, name, "recheck", func() error {
+				return e.sourceStill(ctx, c, name, fsys.FileInfo{Size: t.file.Size}, false)
+			}); err != nil {
+				res.postActionFailed = true
+				return fail(err)
+			}
+		}
 		if err := e.postAction(ctx, c, name); err != nil {
 			res.postActionFailed = true
 			return fail(err)
@@ -129,6 +139,36 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 	}
 	res.Bytes = sent
 	res.SrcHash, res.Hashed = srcHash, e.cfg.Verify == config.VerifyHash
+
+	// Verification compares what was read with what was written, so on its own
+	// it cannot notice a source whose writer was still at work: both sides hold
+	// the same bytes, just not all of the file. The size the scan settled on is
+	// the check that can.
+	if sent != t.file.Size {
+		e.discard(ctx, c.dst, tmp)
+		return fail(fmt.Errorf("%w: %d bytes when it settled, %d read", ErrSourceChanged, t.file.Size, sent))
+	}
+
+	// When the source is about to be deleted or moved, it is also looked at
+	// once now and once more just before, so that a writer appending while the
+	// file was verified and published is caught before its data goes with the
+	// source. Both looks go through Stat, so their timestamps are comparable on
+	// every protocol, which a listing and a Stat are not on FTP.
+	var sentFrom fsys.FileInfo
+	if e.consumesSource() {
+		err := e.step(ctx, name, "recheck", func() error {
+			var err error
+			sentFrom, err = c.src.Stat(ctx, name)
+			if err == nil && sentFrom.Size != sent {
+				err = fmt.Errorf("%w: %d bytes read, %d there now", ErrSourceChanged, sent, sentFrom.Size)
+			}
+			return err
+		})
+		if err != nil {
+			e.discard(ctx, c.dst, tmp)
+			return fail(err)
+		}
+	}
 
 	var dstHash uint64
 	err = e.step(ctx, name, "verify", func() error {
@@ -155,6 +195,17 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 	if skipped {
 		res.Outcome, res.Reason = Skipped, ReasonAlreadyExists
 		return finish(res)
+	}
+
+	if e.consumesSource() {
+		// The file has arrived, so this is not a transfer failure to retry:
+		// the source is left where it is, and the next cycle finds it changed.
+		if err := e.step(ctx, name, "recheck", func() error {
+			return e.sourceStill(ctx, c, name, sentFrom, true)
+		}); err != nil {
+			res.postActionFailed = true
+			return fail(err)
+		}
 	}
 
 	if err := e.postAction(ctx, c, name); err != nil {
@@ -304,6 +355,31 @@ func (e *Engine) postAction(ctx context.Context, c *conn, name string) error {
 			return cerr
 		}
 	}
+}
+
+// consumesSource reports whether the post-transfer action takes the source
+// away, which is when a source that changed has data to lose.
+func (e *Engine) consumesSource() bool {
+	return e.cfg.PostAction == config.PostDelete || e.cfg.PostAction == config.PostMove
+}
+
+// sourceStill confirms the source is what it was when want was taken, just
+// before the post-transfer action would delete or move it.
+//
+// The timestamp is compared only when want also came from Stat. A listing's
+// timestamp can be coarser than Stat's for the same unchanged file — FTP's LIST
+// against MLST — and comparing the two would report a change that never
+// happened.
+func (e *Engine) sourceStill(ctx context.Context, c *conn, name string, want fsys.FileInfo, compareTime bool) error {
+	now, err := c.src.Stat(ctx, name)
+	if err != nil {
+		return err
+	}
+	if now.Size != want.Size || (compareTime && !now.ModTime.Equal(want.ModTime)) {
+		return fmt.Errorf("%w: it was modified after being sent, so it was left in place (%d bytes then, %d now)",
+			ErrSourceChanged, want.Size, now.Size)
+	}
+	return nil
 }
 
 // discard removes a temporary file, reporting failure only at warn level: the
