@@ -351,5 +351,16 @@ func Load(path string) (*Config, error) {
 		base := filepath.Base(path)
 		c.Name = strings.TrimSuffix(base, filepath.Ext(base))
 	}
+
+	// Paths on this machine are resolved once, here. Every transfer record
+	// names both ends in full, because a path relative to a working directory
+	// nobody remembers identifies nothing when the log is read months later,
+	// and those records are built from these values.
+	c.Local.Path = absPath(c.Local.Path)
+	c.MoveTo = absPath(c.MoveTo)
+	c.Log.Path = absPath(c.Log.Path)
+	if c.Remote.IsLocal() {
+		c.Remote.Path = absPath(c.Remote.Path)
+	}
 	return &c, nil
 }

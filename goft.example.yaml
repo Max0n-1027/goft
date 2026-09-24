@@ -11,7 +11,9 @@
 name: invoice-upload
 
 # The local side of the transfer. It is the source for send and the
-# destination for recv.
+# destination for recv. A relative path on this machine — here, in move_to,
+# log.path, or remote.path with protocol local — is resolved against the
+# directory goft is started from, and recorded in the log in full.
 local:
   path: /data/out/invoice
 

@@ -130,7 +130,11 @@ func loadConfig(dir config.Direction) (*config.Config, error) {
 		return nil, fmt.Errorf("invalid configuration %s: %w", path, err)
 	}
 	if flagLogFile != "" {
-		cfg.Log.Path = flagLogFile
+		if abs, err := filepath.Abs(flagLogFile); err == nil {
+			cfg.Log.Path = abs
+		} else {
+			cfg.Log.Path = flagLogFile
+		}
 	}
 	if flagLogLevel != "" {
 		if _, err := config.ParseLevel(flagLogLevel); err != nil {

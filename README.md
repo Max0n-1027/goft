@@ -66,6 +66,10 @@ The two directories must be separate; goft refuses a configuration where either
 contains the other. See
 [Copying between two local directories](docs/local-copy.md).
 
+Paths on this machine may be relative. They are resolved against the directory
+goft is started from, once, when the configuration is read, and the log records
+them in full.
+
 The direction is chosen by the command, not by the file. That means the same
 file could be used for both `send` and `recv`; keep one file per purpose,
 especially with `post_action: delete`, or a pair of jobs will pass the same

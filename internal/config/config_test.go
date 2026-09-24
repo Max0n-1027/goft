@@ -426,3 +426,61 @@ func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
 		}
 	}
 }
+
+func TestLoadMakesLocalPathsAbsolute(t *testing.T) {
+	// Every log record names both ends in full, because a path relative to a
+	// working directory nobody remembers identifies nothing months later. The
+	// paths the records are built from therefore have to be absolute already.
+	work := t.TempDir()
+	t.Chdir(work)
+	for _, d := range []string{"out", "backup", "done"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := writeConfig(t, `
+local:
+  path: out
+remote:
+  protocol: local
+  path: backup
+post_action: move
+move_to: done
+log:
+  path: logs/goft.log
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string]string{
+		"local.path":  cfg.Local.Path,
+		"remote.path": cfg.Remote.Path,
+		"move_to":     cfg.MoveTo,
+		"log.path":    cfg.Log.Path,
+	} {
+		if !filepath.IsAbs(got) || !strings.HasPrefix(got, work) {
+			t.Errorf("%s = %q, want it resolved against %s", name, got, work)
+		}
+	}
+}
+
+func TestLoadLeavesARemotePathAlone(t *testing.T) {
+	// A server's path is the server's business; it is not relative to anything
+	// on this machine.
+	p := writeConfig(t, `
+local:
+  path: `+t.TempDir()+`
+remote:
+  protocol: sftp
+  host: example
+  path: upload/invoice
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.Path != "upload/invoice" {
+		t.Errorf("remote.path = %q, want it as written", cfg.Remote.Path)
+	}
+}

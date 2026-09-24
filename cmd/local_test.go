@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -167,4 +168,56 @@ func TestLocalPairAcceptsADestinationThatDoesNotExistYet(t *testing.T) {
 	if !strings.Contains(out.String(), "will be created on first transfer") {
 		t.Errorf("report does not say the destination will be created:\n%s", out.String())
 	}
+}
+
+func TestRelativePathsAreRecordedInFull(t *testing.T) {
+	// A job file may name its directories relative to where goft runs, but the
+	// log it writes is read long after that working directory is forgotten.
+	work := t.TempDir()
+	t.Chdir(work)
+	for _, d := range []string{"out", "backup"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join("out", "a.csv"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("job.yaml", []byte(`
+local:
+  path: out
+remote:
+  protocol: local
+  path: backup
+stable_duration: 0s
+log:
+  path: goft.log
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resetFlags()
+	rootCmd.SetArgs([]string{"send", "-c", "job.yaml", "--no-console"})
+	if code := Execute(); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	b, err := os.ReadFile(filepath.Join(work, "goft.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		`"src":` + quoteJSON(filepath.Join(work, "out", "a.csv")):    "src",
+		`"dst":` + quoteJSON(filepath.Join(work, "backup", "a.csv")): "dst",
+	}
+	for needle, field := range want {
+		if !strings.Contains(string(b), needle) {
+			t.Errorf("%s is not recorded in full; want %s in\n%s", field, needle, b)
+		}
+	}
+}
+
+func quoteJSON(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
