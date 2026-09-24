@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"os"
 	"path"
@@ -164,6 +165,10 @@ func (s *smbFS) Write(_ context.Context, name string, r io.Reader) (int64, error
 }
 
 // MkdirAll implements FS. The share only creates one level at a time.
+//
+// A level Mkdir refuses is fine only if a directory is what holds that name.
+// "Already exists" is also the answer for a file in the way, and taking that
+// for success sent the job on to a write that failed with the reason gone.
 func (s *smbFS) MkdirAll(_ context.Context, dir string) error {
 	if dir == "" {
 		return nil
@@ -171,10 +176,16 @@ func (s *smbFS) MkdirAll(_ context.Context, dir string) error {
 	var built string
 	for _, part := range Segments(path.Join(s.root, dir)) {
 		built = path.Join(built, part)
-		if err := s.share.Mkdir(built, 0o755); err != nil && !os.IsExist(err) {
-			if _, statErr := s.share.Stat(built); statErr != nil {
-				return err
-			}
+		err := s.share.Mkdir(built, 0o755)
+		if err == nil {
+			continue
+		}
+		fi, statErr := s.share.Stat(built)
+		switch {
+		case statErr != nil:
+			return err
+		case !fi.IsDir():
+			return fmt.Errorf("%s is a file, not a directory: %w", built, fs.ErrExist)
 		}
 	}
 	return nil
