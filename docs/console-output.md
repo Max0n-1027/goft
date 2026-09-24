@@ -127,7 +127,7 @@ There is no console-specific setting: `log.level` governs both outputs at once.
 | `error` | failures and the summary |
 | `warn` | + notes such as a size cap skip |
 | `info` (default) | + one line per file |
-| `debug` | + the hash and rate on each line, and the steps indented under it |
+| `debug` | + the destination digest on each line when `verify: hash`, and the rate for files that were sent |
 
 ## See also
 
