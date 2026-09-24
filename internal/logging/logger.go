@@ -44,7 +44,6 @@ const (
 const (
 	EventScan       = "scan"
 	EventTransfer   = "transfer"
-	EventVerify     = "verify"
 	EventPostAction = "postaction"
 	EventConnect    = "connect"
 	EventLifecycle  = "lifecycle"

@@ -125,10 +125,11 @@ log:
   level: info                 # debug | info | warn | error
   rotation: daily             # size | daily | monthly
 
-  # Which parameters each transferred file is recorded with. Omit the key for
-  # the set below; name fields to write exactly those and nothing else.
+  # Which parameters each transferred file is recorded with. Leave the key out
+  # for the full set below, which is what most jobs want; name fields to write
+  # exactly those and nothing else, including at debug level.
   #
-  #   src          path relative to the sending root
+  #   src          where the file was read from, in full
   #   dst          where the file was written, in full
   #   protocol     ftp | sftp | smb | local
   #   bytes        bytes transferred
@@ -147,7 +148,7 @@ log:
   # record missing those cannot be placed. cycle_id is a fresh UUID for each
   # pass over the sending side, so the records one pass produced can be picked
   # out of a log a watching process has been appending to for days.
-  fields: [src, dst, protocol, bytes, duration_ms, verify, result, reason, error, hash_src, hash_dst, attempt]
+  # fields: [src, dst, result, error, hash_src, hash_dst]
   max_size_mb: 100
   # Old generations beyond these limits are deleted. Only this job's own files
   # are ever touched — invoice-2026-08-30.log, and lumberjack's backups of it —
@@ -159,10 +160,20 @@ log:
 
 # `level` is the only verbosity control, and the console output follows it too:
 #
-#   error  transfer failures, connection failures, configuration errors
-#   warn   + size limit skips, relaxed host key checking, ignored ssh_config
-#          directives, post-processing retries
-#   info   + startup and shutdown, one line per file including the source and
-#            destination hashes, a summary per cycle
-#   debug  + per-step timings, how each connection parameter was resolved,
-#            transfer rates
+#   error  a file that failed; a cycle or a run that could not start, such as
+#          an unreachable server
+#   warn   + settings worth a second look (stable_duration 0, host key
+#          checking relaxed or accept-new), an ssh_config that could not be
+#          read or a directive in it that is ignored, a key skipped because it
+#          is locked, a file over the size cap the first time it is seen, a
+#          retry of a transfer or of a post-transfer action, a temporary file
+#          or an emptied directory that could not be removed
+#   info   + the settings at startup and a record at shutdown, one record per
+#            file including the source and destination hashes, each emptied
+#            directory removed, a summary per cycle
+#   debug  + the timing of each step, how each connection parameter was
+#            resolved, what each scan found, a file over the size cap seen
+#            again, transfer rates
+#
+# A configuration that cannot be loaded never reaches the log: goft reports it
+# on stderr and exits with status 2.

@@ -484,3 +484,23 @@ remote:
 		t.Errorf("remote.path = %q, want it as written", cfg.Remote.Path)
 	}
 }
+
+func TestTheExampleConfigurationLoads(t *testing.T) {
+	// goft.example.yaml is what people copy. It has to parse, decode and, the
+	// paths it names aside, validate — and it must leave log.fields out, so
+	// that a copy of it writes the full set.
+	cfg, err := Load(filepath.Join("..", "..", "goft.example.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Log.Fields != nil {
+		t.Errorf("log.fields = %v, want it left out so the full set applies", cfg.Log.Fields)
+	}
+
+	// Point the paths at directories that exist; everything else is as written.
+	cfg.Local.Path = t.TempDir()
+	cfg.MoveTo = t.TempDir()
+	if err := Validate(cfg); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}

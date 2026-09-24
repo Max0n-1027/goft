@@ -51,7 +51,7 @@ func transferError(n int) error {
 
 var rootCmd = &cobra.Command{
 	Use:           "goft",
-	Short:         "Transfer files between a local directory and an FTP, SFTP or SMB server",
+	Short:         "Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
@@ -184,10 +184,16 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 	if err != nil {
 		return nil, err
 	}
+	j := &job{cfg: cfg, log: log, closeLog: closer}
+
+	// The settings open the log, so that a warning about them is read after
+	// them rather than before.
+	j.logConfiguration()
 	for _, w := range config.Warnings(cfg) {
 		log.Warn(w, logging.KeyEvent, logging.EventLifecycle)
 	}
 	if err := reportResolution(log, cfg.Remote); err != nil {
+		j.close()
 		return nil, err
 	}
 
@@ -201,8 +207,6 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 	if dir == config.DirRecv {
 		newSrc, newDst = newRemote, newLocal
 	}
-
-	j := &job{cfg: cfg, log: log, closeLog: closer}
 
 	opts := engine.Options{
 		Config:    cfg,
@@ -280,7 +284,6 @@ func runOnce(ctx context.Context, dir config.Direction, dryRun bool) error {
 	}
 	defer j.close()
 
-	j.logConfiguration()
 	summary, err := j.engine.RunOnce(ctx)
 	if err != nil {
 		j.log.Error("run failed", logging.KeyEvent, logging.EventLifecycle, logging.KeyError, err.Error())
@@ -307,7 +310,6 @@ func runServe(ctx context.Context, dir config.Direction, dryRun bool) error {
 	}
 	defer j.close()
 
-	j.logConfiguration()
 	if err := j.engine.Serve(ctx); err != nil {
 		return startupError(err)
 	}

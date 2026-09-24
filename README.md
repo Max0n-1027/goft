@@ -249,8 +249,9 @@ transfer looks like a success. A trailing dot or space is the same story:
 Windows drops it, and the file arrives under a name that is not the one the
 server used. So are the reserved device names (`con`, `nul`, `aux`, `com1` and
 the rest), which ordinary Win32 path resolution cannot reach afterwards.
-Because none of this can be caught after the fact, `recv` onto Windows refuses
-such a name before writing anything, records the file as failed and says what
+Because none of this can be caught after the fact, writing onto a Windows disk
+— `recv`, or `send` with `protocol: local` — refuses such a name before writing
+anything, records the file as failed and says what
 about the name was the problem. It is not retried, since the name would be
 refused identically next time. The rest of the cycle carries on, and every name
 Windows can hold as written is transferred as before.

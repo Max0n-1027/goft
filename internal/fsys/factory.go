@@ -36,7 +36,8 @@ type Resolution struct {
 	Field string
 	// Value is what it ended up as, with any secret already masked.
 	Value string
-	// Source is where it came from: yaml, ssh_config, netrc or default.
+	// Source is where it came from: yaml, ssh_config, netrc,
+	// credential_manager or default.
 	Source string
 }
 
@@ -48,7 +49,8 @@ const (
 	SourceDefault   = "default"
 )
 
-// Resolved is the outcome of merging YAML with ssh_config or netrc.
+// Resolved is the outcome of merging the job configuration with whatever the
+// protocol consults besides: ssh_config, netrc or the Credential Manager.
 type Resolved struct {
 	// Host is the name to connect to, which for an sftp alias is the HostName
 	// from ssh_config rather than the alias itself.

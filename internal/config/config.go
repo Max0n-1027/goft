@@ -21,8 +21,8 @@ same settings can drive an upload or a download.
 [Load] reads a file, replaces ${NAME} in its values from the environment and
 fills in the defaults. [Validate] then reports everything wrong with it at once, and
 [ValidateForDirection] adds the checks that only make sense once the command is
-known. Credentials for ftp and sftp are deliberately not checked here, because
-~/.netrc and ~/.ssh/config may still supply them.
+known. Credentials are deliberately not checked here, because the Windows
+Credential Manager, ~/.netrc or ~/.ssh/config may still supply them.
 
 goft.example.yaml documents every setting in full.
 */

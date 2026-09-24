@@ -20,7 +20,7 @@ func addDryRun(c *cobra.Command) *cobra.Command {
 
 var sendCmd = addDryRun(&cobra.Command{
 	Use:   "send",
-	Short: "Transfer from the local directory to the remote server once",
+	Short: "Transfer from the local directory to the other side once",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runOnce(cmd.Context(), config.DirSend, flagDryRun)
@@ -29,7 +29,7 @@ var sendCmd = addDryRun(&cobra.Command{
 
 var recvCmd = addDryRun(&cobra.Command{
 	Use:   "recv",
-	Short: "Transfer from the remote server to the local directory once",
+	Short: "Transfer from the other side to the local directory once",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return runOnce(cmd.Context(), config.DirRecv, flagDryRun)
@@ -49,7 +49,7 @@ var serveCmd = &cobra.Command{
 
 var serveSendCmd = addDryRun(&cobra.Command{
 	Use:   "send",
-	Short: "Watch the local directory and transfer to the remote server",
+	Short: "Watch the local directory and transfer to the other side",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())
@@ -60,7 +60,7 @@ var serveSendCmd = addDryRun(&cobra.Command{
 
 var serveRecvCmd = addDryRun(&cobra.Command{
 	Use:   "recv",
-	Short: "Watch the remote server and transfer to the local directory",
+	Short: "Watch the other side and transfer to the local directory",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())

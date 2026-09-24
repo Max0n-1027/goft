@@ -221,3 +221,26 @@ func quoteJSON(s string) string {
 	b, _ := json.Marshal(s)
 	return string(b)
 }
+
+func TestTheLogOpensWithTheSettings(t *testing.T) {
+	// A log kept for auditing starts with what the run was about to use, so
+	// that a warning about those settings is read after them, not before.
+	p := newLocalPair(t, "") // stable_duration: 0s draws a warning
+	logFile := filepath.Join(t.TempDir(), "goft.log")
+	p.cfgPath = p.config(p.src, p.dst, "log:\n  path: "+logFile+"\n")
+
+	if code := p.run("send", "--no-console"); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	b, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, _ := strings.Cut(string(b), "\n")
+	if !strings.Contains(first, `"msg":"starting"`) {
+		t.Errorf("first record = %s, want the settings", first)
+	}
+	if !strings.Contains(string(b), "stable_duration is 0") {
+		t.Error("the warning should still be there, after the settings")
+	}
+}
