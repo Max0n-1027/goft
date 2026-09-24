@@ -33,20 +33,40 @@ func newFTP(ctx context.Context, r config.Remote) (FS, error) {
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
-	conn, err := goftp.Dial(addr,
-		goftp.DialWithContext(ctx),
-		goftp.DialWithTimeout(30*time.Second),
-	)
+	timeout := r.ConnectTimeoutOrDefault()
+	deadline := time.Now().Add(timeout)
+
+	// The library dials the control connection and every data connection
+	// through this, the control connection first. That one shares a deadline
+	// with the greeting and the login, lifted once logged in: they would
+	// otherwise wait for as long as a wedged server cared to say nothing. A
+	// data connection only has connect_timeout to be established, since what
+	// it then carries may rightly take hours.
+	var control net.Conn
+	dial := func(network, address string) (net.Conn, error) {
+		if control != nil {
+			return (&net.Dialer{Timeout: timeout}).Dial(network, address)
+		}
+		c, err := (&net.Dialer{Deadline: deadline}).DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		_ = c.SetDeadline(deadline)
+		control = c
+		return c, nil
+	}
+	conn, err := goftp.Dial(addr, goftp.DialWithDialFunc(dial))
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	// Login negotiates features and switches the connection to binary mode
 	// (TYPE I). That matters: in ASCII mode the server rewrites line endings,
 	// so sizes and hashes would never match.
 	if err := conn.Login(res.User, string(res.Password)); err != nil {
 		_ = conn.Quit()
-		return nil, fmt.Errorf("ftp login as %s on %s: %w", res.User, addr, err)
+		return nil, fmt.Errorf("ftp login as %s on %s: %w", res.User, addr, connectErr(err, timeout, deadline))
 	}
+	_ = control.SetDeadline(time.Time{})
 
 	return &ftpFS{
 		root: r.Path,

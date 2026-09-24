@@ -67,6 +67,12 @@ remote:
   # share: shared                           # smb only; do not repeat it in `path`
   # domain: WORKGROUP                       # smb only
 
+  # How long opening a connection may take, all of it: the TCP connection,
+  # the handshake, the login and, for smb, mounting the share. A server that
+  # accepts the connection and then says nothing is given up on after this,
+  # and the attempt counts as a failure like any other.
+  # connect_timeout: 30s
+
 # --- Which files take part. Applied to the sending side. ---
 
 recursive: false              # true also descends into subdirectories

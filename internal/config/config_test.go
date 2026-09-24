@@ -195,9 +195,11 @@ func validConfig(local string) *Config {
 		Name:  "job",
 		Local: Local{Path: local},
 		Remote: Remote{
-			Protocol: ProtocolSFTP,
-			Host:     "example",
-			Path:     "/upload",
+			Protocol:       ProtocolSFTP,
+			Host:           "example",
+			Path:           "/upload",
+			ConnectTimeout: DefaultConnectTimeout,
+			IOTimeout:      DefaultIOTimeout,
 		},
 		Verify:         VerifyHash,
 		OnExists:       OnExistsSkip,
@@ -502,5 +504,36 @@ func TestTheExampleConfigurationLoads(t *testing.T) {
 	cfg.MoveTo = t.TempDir()
 	if err := Validate(cfg); err != nil {
 		t.Errorf("Validate: %v", err)
+	}
+}
+
+func TestTimeoutsDefaultAndValidate(t *testing.T) {
+	p := writeConfig(t, `
+local:
+  path: `+t.TempDir()+`
+remote:
+  protocol: sftp
+  host: example
+  path: /upload
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.ConnectTimeout != DefaultConnectTimeout || cfg.Remote.IOTimeout != DefaultIOTimeout {
+		t.Errorf("timeouts = %v / %v, want the defaults", cfg.Remote.ConnectTimeout, cfg.Remote.IOTimeout)
+	}
+
+	cfg.Remote.IOTimeout = 0
+	if err := Validate(cfg); err != nil {
+		t.Errorf("io_timeout: 0 should turn the check off, got %v", err)
+	}
+	cfg.Remote.ConnectTimeout = 0
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "connect_timeout") {
+		t.Errorf("Validate() = %v, want connect_timeout: 0 refused", err)
+	}
+	cfg.Remote.ConnectTimeout, cfg.Remote.IOTimeout = time.Second, -time.Second
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "io_timeout") {
+		t.Errorf("Validate() = %v, want a negative io_timeout refused", err)
 	}
 }

@@ -86,6 +86,13 @@ func (r Remote) LogValue() slog.Value {
 	add("netrc_file", absPath(r.NetrcFile))
 	add("share", r.Share)
 	add("domain", r.Domain)
+	if !r.IsLocal() {
+		// Recorded with their defaults, like every other setting that decided
+		// how the run behaved.
+		attrs = append(attrs,
+			slog.String("connect_timeout", r.ConnectTimeout.String()),
+			slog.String("io_timeout", r.IOTimeout.String()))
+	}
 	return slog.GroupValue(attrs...)
 }
 

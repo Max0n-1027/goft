@@ -148,6 +148,33 @@ type Remote struct {
 	// Share is the smb share to mount, and Domain the NTLM domain.
 	Share  string `mapstructure:"share"`
 	Domain string `mapstructure:"domain"`
+
+	// ConnectTimeout bounds how long opening a connection may take, from the
+	// TCP connection through the handshake and login to mounting the share. A
+	// server that accepts the connection and then says nothing would otherwise
+	// hold the job there for good.
+	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
+	// IOTimeout is how long an open connection may go without moving any data
+	// while something is waiting on it. Past that the connection is dropped and
+	// the file tried again over a new one. It measures silence, not duration,
+	// so a large file that keeps moving is never cut off. Zero turns it off.
+	IOTimeout time.Duration `mapstructure:"io_timeout"`
+}
+
+// Defaults for a connection's timeouts, also used for a Remote built in code
+// rather than loaded, where the fields are simply left at zero.
+const (
+	DefaultConnectTimeout = 30 * time.Second
+	DefaultIOTimeout      = 5 * time.Minute
+)
+
+// ConnectTimeoutOrDefault returns ConnectTimeout, or the default when it was
+// never set.
+func (r Remote) ConnectTimeoutOrDefault() time.Duration {
+	if r.ConnectTimeout > 0 {
+		return r.ConnectTimeout
+	}
+	return DefaultConnectTimeout
 }
 
 // IsLocal reports whether the far side is another directory on this machine.
@@ -305,6 +332,8 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("on_exists", string(OnExistsSkip))
 	v.SetDefault("post_action", string(PostNone))
 	v.SetDefault("remove_empty_dirs", false)
+	v.SetDefault("remote.connect_timeout", DefaultConnectTimeout.String())
+	v.SetDefault("remote.io_timeout", DefaultIOTimeout.String())
 	v.SetDefault("retry.max_attempts", 3)
 	v.SetDefault("retry.interval", "2s")
 	v.SetDefault("retry.backoff", 2.0)

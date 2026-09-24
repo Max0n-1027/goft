@@ -2,8 +2,11 @@ package fsys
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"time"
 
 	"goft/internal/config"
 )
@@ -93,6 +96,20 @@ func Resolve(r config.Remote) (*Resolved, error) {
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", r.Protocol)
 	}
+}
+
+// connectErr says plainly that a connection ran out of time, rather than
+// leaving the operator to read "i/o timeout" off whichever read happened to be
+// waiting when the deadline passed.
+//
+// Whether it did is judged by the clock as well as by the error: not every
+// library keeps the deadline error it was handed — go-smb2 turns it into text —
+// and a failure at or after the deadline is the deadline's doing either way.
+func connectErr(err error, timeout time.Duration, deadline time.Time) error {
+	if errors.Is(err, os.ErrDeadlineExceeded) || !time.Now().Before(deadline) {
+		return fmt.Errorf("no usable connection within connect_timeout %v: %w", timeout, err)
+	}
+	return err
 }
 
 // resolveLocal reports the far side of a local copy. There is nothing to look

@@ -106,6 +106,12 @@ func validateRemote(c *Config, add addFunc) {
 	if c.Remote.Host == "" {
 		add("remote.host is required")
 	}
+	if c.Remote.ConnectTimeout <= 0 {
+		add("remote.connect_timeout must be > 0")
+	}
+	if c.Remote.IOTimeout < 0 {
+		add("remote.io_timeout must be >= 0 (0 turns it off)")
+	}
 }
 
 // validateLocalRemote checks the far side of a copy between two directories on

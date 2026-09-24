@@ -68,11 +68,17 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
-	d := net.Dialer{Timeout: 30 * time.Second}
+	// The TCP connection, negotiation, authentication and mounting share one
+	// deadline, lifted once the share is usable. A server that accepted the
+	// connection and then never answered used to hold the job there for good.
+	timeout := r.ConnectTimeoutOrDefault()
+	deadline := time.Now().Add(timeout)
+	d := net.Dialer{Deadline: deadline}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
+	_ = conn.SetDeadline(deadline)
 
 	dialer := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
@@ -84,7 +90,7 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	session, err := dialer.DialConn(ctx, conn, addr)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("smb session with %s: %w", addr, err)
+		return nil, fmt.Errorf("smb session with %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 
 	// Paths are share relative from here on, which is why remote.path must not
@@ -93,8 +99,9 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	if err != nil {
 		_ = session.Logoff()
 		conn.Close()
-		return nil, fmt.Errorf("mount share %q on %s: %w", r.Share, addr, err)
+		return nil, fmt.Errorf("mount share %q on %s: %w", r.Share, addr, connectErr(err, timeout, deadline))
 	}
+	_ = conn.SetDeadline(time.Time{})
 
 	return &smbFS{
 		root:    strings.TrimPrefix(r.Path, "/"),

@@ -49,29 +49,37 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
-	d := net.Dialer{Timeout: 30 * time.Second}
+	// Everything up to a usable connection shares one deadline, the TCP
+	// connection included. A dial timeout alone covers only that, and a server
+	// that accepts it and then never starts the handshake held the job there
+	// for good.
+	timeout := r.ConnectTimeoutOrDefault()
+	deadline := time.Now().Add(timeout)
+	d := net.Dialer{Deadline: deadline}
 	netConn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
+	_ = netConn.SetDeadline(deadline)
+
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, &ssh.ClientConfig{
 		User:              res.User,
 		Auth:              auths,
 		HostKeyCallback:   hostKey,
 		HostKeyAlgorithms: knownHostAlgorithms(res, addr, netConn.RemoteAddr()),
-		Timeout:           30 * time.Second,
 	})
 	if err != nil {
 		netConn.Close()
-		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, err)
+		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	conn := ssh.NewClient(sshConn, chans, reqs)
 
 	client, err := sftp.NewClient(conn)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("start sftp subsystem on %s: %w", addr, err)
+		return nil, fmt.Errorf("start sftp subsystem on %s: %w", addr, connectErr(err, timeout, deadline))
 	}
+	_ = netConn.SetDeadline(time.Time{})
 
 	return &sftpFS{
 		root:   r.Path,
