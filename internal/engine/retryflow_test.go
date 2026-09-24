@@ -1,12 +1,14 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -170,5 +172,37 @@ func TestRetryIsRecordedInTheLog(t *testing.T) {
 	}
 	if !sawAttempts {
 		t.Error("the successful record should say how many attempts it took")
+	}
+}
+
+func TestAnArchiveCollisionIsNotRetried(t *testing.T) {
+	// A name already taken under move_to will still be taken a moment later.
+	// Retrying it only spent the backoff on every such file, every cycle, and
+	// wrote a retry warning each time.
+	h := newHarness(t)
+	archive := t.TempDir()
+	h.cfg.PostAction = config.PostMove
+	h.cfg.MoveTo = archive
+	h.cfg.Retry = config.Retry{MaxAttempts: 3, Interval: time.Millisecond, Backoff: 1}
+	h.write(h.srcDir, "a.csv", "x")
+	h.write(archive, "a.csv", "already archived")
+
+	var buf bytes.Buffer
+	e := New(Options{
+		Config: h.cfg, Direction: config.DirSend,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(&buf, nil)), Single: true,
+		OnResult: func(r Result) { h.results = append(h.results, r) },
+	})
+	if _, err := e.RunOnce(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	if n := strings.Count(buf.String(), "retrying transfer"); n != 0 {
+		t.Errorf("%d retry records for a collision that cannot resolve itself", n)
+	}
+	if r := h.result("a.csv"); r.Outcome != Failed || !errors.Is(r.Err, fs.ErrExist) {
+		t.Errorf("result = %+v, want a failure recognisable as an existing file", r)
 	}
 }

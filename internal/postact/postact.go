@@ -44,7 +44,10 @@ func move(src fsys.FS, name, moveTo string) error {
 	to := filepath.Join(moveTo, filepath.FromSlash(name))
 
 	if _, err := os.Stat(to); err == nil {
-		return fmt.Errorf("move target %s already exists", to)
+		// fs.ErrExist, so that it is recognised as permanent: the name will
+		// still be taken on the next attempt, and retrying it only spends the
+		// backoff.
+		return fmt.Errorf("move target %s: %w", to, fs.ErrExist)
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}

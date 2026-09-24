@@ -273,7 +273,9 @@ turns it off.
 
 Post-processing is the exception: if the file arrived but `post_action` failed,
 only the post-processing is tried again. Re-sending a file that is already
-there would achieve nothing.
+there would achieve nothing. The same rules decide whether that is worth
+another go, so a name already taken under `move_to` is reported at once rather
+than retried.
 
 **`on_exists: overwrite` avoids pointless transfers.** Before overwriting,
 goft compares the existing file using the configured `verify` method and skips
