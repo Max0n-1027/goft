@@ -63,6 +63,10 @@ type Resolved struct {
 	// KnownHosts verifies the host key unless SkipHostKey is set.
 	KnownHosts  string
 	SkipHostKey bool
+	// AcceptNewHostKeys trusts and records the key of a host KnownHosts does
+	// not list yet, while still refusing a host whose key has changed. It is
+	// what ssh_config's StrictHostKeyChecking accept-new asks for.
+	AcceptNewHostKeys bool
 	// Trace records where each value above came from, which is what goft test
 	// prints and the debug log records.
 	Trace []Resolution

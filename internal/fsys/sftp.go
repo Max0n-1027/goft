@@ -8,7 +8,9 @@ import (
 	"net"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -114,11 +116,88 @@ func hostKeyCallback(res *Resolved) (ssh.HostKeyCallback, error) {
 	if res.KnownHosts == "" {
 		return nil, errors.New("no known_hosts file to verify the host key against; set remote.known_hosts or remote.insecure_skip_host_key_check")
 	}
+	if res.AcceptNewHostKeys {
+		if err := ensureKnownHosts(res.KnownHosts); err != nil {
+			return nil, err
+		}
+	}
 	cb, err := knownhosts.New(res.KnownHosts)
 	if err != nil {
 		return nil, fmt.Errorf("read known_hosts %s: %w", res.KnownHosts, err)
 	}
-	return cb, nil
+	if !res.AcceptNewHostKeys {
+		return cb, nil
+	}
+
+	path := res.KnownHosts
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		err := cb(hostname, remote, key)
+		if !isUnknownHost(err) {
+			// Verified, or refused: a known host with a different key is
+			// refused here exactly as it would be without accept-new.
+			return err
+		}
+		return recordHostKey(path, hostname, remote, key)
+	}, nil
+}
+
+// isUnknownHost reports whether a known_hosts check failed only because the
+// host is not listed at all, as opposed to being listed with another key.
+func isUnknownHost(err error) bool {
+	var ke *knownhosts.KeyError
+	return errors.As(err, &ke) && len(ke.Want) == 0
+}
+
+// knownHostsMu serialises additions to known_hosts. Every worker connects at
+// the start of a cycle, so several can meet the same unknown host at once.
+var knownHostsMu sync.Mutex
+
+// recordHostKey pins the key of a host seen for the first time, as OpenSSH's
+// accept-new does, so that from the next connection on it is a known host and a
+// different key for it is refused.
+//
+// The file is read again under the lock first: another worker may have recorded
+// this host a moment ago, and if it recorded a different key than this
+// connection is being shown, that is a conflict to refuse rather than a second
+// line to add.
+func recordHostKey(path, hostname string, remote net.Addr, key ssh.PublicKey) error {
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+
+	cb, err := knownhosts.New(path)
+	if err != nil {
+		return fmt.Errorf("read known_hosts %s: %w", path, err)
+	}
+	if err := cb(hostname, remote, key); !isUnknownHost(err) {
+		return err
+	}
+
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return fmt.Errorf("record host key in %s: %w", path, err)
+	}
+	line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key) + "\n"
+	if _, err := f.WriteString(line); err != nil {
+		f.Close()
+		return fmt.Errorf("record host key in %s: %w", path, err)
+	}
+	return f.Close()
+}
+
+// ensureKnownHosts creates an empty known_hosts, and its directory, when accept-new
+// is to record the first key in a file that does not exist yet.
+func ensureKnownHosts(path string) error {
+	if exists(path) {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("create known_hosts %s: %w", path, err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return fmt.Errorf("create known_hosts %s: %w", path, err)
+	}
+	return f.Close()
 }
 
 func (s *sftpFS) abs(name string) string {

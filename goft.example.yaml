@@ -36,6 +36,9 @@ remote:
   # password: ${GOFT_SFTP_PASSWORD}
   # known_hosts: ~/.ssh/known_hosts
   # insecure_skip_host_key_check: false
+  # ssh_config's StrictHostKeyChecking is honoured: "no" turns verification off,
+  # and "accept-new" records the key of a host known_hosts does not list yet
+  # while still refusing a known host whose key has changed.
 
   # use_ssh_config: true                    # sftp: false stops ~/.ssh/config being read
   # ssh_config_file: /etc/goft/ssh_config   # sftp: use this file instead of the usual search

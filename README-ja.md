@@ -83,6 +83,8 @@ remote:
 
 ssh_config の機能のうち2つは未対応で、黙って無視せず警告として報告します。`Match` ブロックと `ProxyJump` / `ProxyCommand` です。必要な設定はジョブファイルに直接書いてください。ssh-agent は使いません。鍵は `private_key` で、パスフレーズつきなら `private_key_passphrase` で渡してください。
 
+ssh_config の `StrictHostKeyChecking` はどちらの値でも警告を出したうえで従います。`no` ではホスト鍵の検証を行いません。`accept-new` は OpenSSH と同じ動作で、known_hosts にまだ載っていないホストの鍵を受け入れてそこに記録し（ファイルが無ければ作成します）、載っているのに鍵が違うホストは拒否します。中間者攻撃はまさにそう見えるからです。
+
 ### 複数ジョブの運用
 
 goft は複数ジョブを管理しません。設定ファイルごとにプロセスを分けて起動してください。Linux では systemd のテンプレートユニットが便利です。

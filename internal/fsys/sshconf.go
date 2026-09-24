@@ -220,11 +220,18 @@ func resolveKnownHosts(res *Resolved, r config.Remote, look sshLookup, home stri
 		res.record("known_hosts", res.KnownHosts, SourceYAML)
 	case ok:
 		// The directive may name several files; the first usable one wins.
-		for _, f := range strings.Fields(v) {
+		// When none exists yet the first is still the one meant, which is
+		// where StrictHostKeyChecking accept-new records the first key and
+		// what an error about a missing file should name.
+		files := strings.Fields(v)
+		for _, f := range files {
 			if p := expandTokens(f, res.Host, res.User, home); exists(p) {
 				res.KnownHosts = p
 				break
 			}
+		}
+		if res.KnownHosts == "" && len(files) > 0 {
+			res.KnownHosts = expandTokens(files[0], res.Host, res.User, home)
 		}
 		if res.KnownHosts != "" {
 			res.record("known_hosts", res.KnownHosts, SourceSSHConfig)
@@ -240,16 +247,26 @@ func resolveKnownHosts(res *Resolved, r config.Remote, look sshLookup, home stri
 // resolveHostKeyPolicy honours the alias's own setting, because a job naming an
 // alias is asking for that alias's configuration. Relaxing verification is
 // never silent.
+//
+// accept-new is not the same as no. It trusts a host it has never seen and
+// records the key, but a host that is known and now presents a different key
+// is still refused — which is what a man in the middle looks like, and the
+// half of the setting that matters.
 func resolveHostKeyPolicy(res *Resolved, look sshLookup) {
 	v, ok := look.get("StrictHostKeyChecking")
 	if !ok || res.SkipHostKey {
 		return
 	}
 	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "no", "off", "accept-new":
+	case "no", "off":
 		res.SkipHostKey = true
 		res.Warnings = append(res.Warnings,
 			fmt.Sprintf("ssh_config sets StrictHostKeyChecking %s: the host key will not be verified", v))
+	case "accept-new":
+		res.AcceptNewHostKeys = true
+		res.Warnings = append(res.Warnings,
+			fmt.Sprintf("ssh_config sets StrictHostKeyChecking %s: the key of a host not yet in %s will be accepted and recorded there; a changed key is still refused",
+				v, res.KnownHosts))
 	}
 }
 

@@ -112,6 +112,13 @@ settings you need directly in the job file instead. ssh-agent is not used;
 supply the key with `private_key`, and its passphrase with
 `private_key_passphrase` if it has one.
 
+`StrictHostKeyChecking` in ssh_config is honoured, with a warning either way.
+`no` turns host key verification off. `accept-new` behaves as it does for
+OpenSSH: the key of a host that known_hosts does not list yet is accepted and
+recorded there — creating the file if need be — while a host that is listed
+with a different key is refused, since that is what a man in the middle looks
+like.
+
 ### Running several jobs
 
 goft does not manage multiple jobs; run one process per configuration file. On
