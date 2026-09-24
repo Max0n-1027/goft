@@ -15,14 +15,34 @@ import (
 //
 // Each call returns an independent connection: the engine gives every worker
 // its own, which is why the live connection count never exceeds workers.
+//
+// A connection that stops moving data for remote.io_timeout is dropped, so that
+// a call waiting on it returns with [ErrStalled] rather than never.
 func NewRemote(ctx context.Context, r config.Remote) (FS, error) {
+	var (
+		fs  FS
+		err error
+	)
 	switch r.Protocol {
 	case config.ProtocolSFTP:
-		return newSFTP(ctx, r)
+		fs, err = newSFTP(ctx, r)
 	case config.ProtocolFTP:
-		return newFTP(ctx, r)
+		fs, err = newFTP(ctx, r)
 	case config.ProtocolSMB:
-		return newSMB(ctx, r)
+		fs, err = newSMB(ctx, r)
+	default:
+		return newNonNetwork(r)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return guard(fs, r.IOTimeout), nil
+}
+
+// newNonNetwork opens what is not reached over a connection, which is also
+// nothing a stall could be caught on.
+func newNonNetwork(r config.Remote) (FS, error) {
+	switch r.Protocol {
 	case config.ProtocolLocal:
 		// Nothing is opened: the far side is a directory on this machine, and
 		// the engine cannot tell the difference.

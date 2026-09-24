@@ -223,6 +223,9 @@ func (s *smbFS) Remove(_ context.Context, name string) error {
 	return s.share.Remove(s.abs(name))
 }
 
+// abort drops the connection under whatever is waiting on it.
+func (s *smbFS) abort() { _ = s.conn.Close() }
+
 // Close implements FS.
 func (s *smbFS) Close() error {
 	err := s.share.Umount()

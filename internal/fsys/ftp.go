@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	goftp "github.com/jlaffaye/ftp"
@@ -21,6 +22,10 @@ type ftpFS struct {
 	root string
 	desc string
 	conn *goftp.ServerConn
+	// open holds the control connection and any data connection in use, so
+	// that abort can drop all of them: a stalled transfer is waiting on a data
+	// connection, not on the control one.
+	open *connSet
 }
 
 func newFTP(ctx context.Context, r config.Remote) (FS, error) {
@@ -42,18 +47,23 @@ func newFTP(ctx context.Context, r config.Remote) (FS, error) {
 	// otherwise wait for as long as a wedged server cared to say nothing. A
 	// data connection only has connect_timeout to be established, since what
 	// it then carries may rightly take hours.
+	open := &connSet{}
 	var control net.Conn
 	dial := func(network, address string) (net.Conn, error) {
 		if control != nil {
-			return (&net.Dialer{Timeout: timeout}).Dial(network, address)
+			c, err := (&net.Dialer{Timeout: timeout}).Dial(network, address)
+			if err != nil {
+				return nil, err
+			}
+			return open.add(c), nil
 		}
 		c, err := (&net.Dialer{Deadline: deadline}).DialContext(ctx, network, address)
 		if err != nil {
 			return nil, err
 		}
 		_ = c.SetDeadline(deadline)
-		control = c
-		return c, nil
+		control = open.add(c)
+		return control, nil
 	}
 	conn, err := goftp.Dial(addr, goftp.DialWithDialFunc(dial))
 	if err != nil {
@@ -72,6 +82,7 @@ func newFTP(ctx context.Context, r config.Remote) (FS, error) {
 		root: r.Path,
 		desc: fmt.Sprintf("ftp://%s%s", addr, r.Path),
 		conn: conn,
+		open: open,
 	}, nil
 }
 
@@ -258,8 +269,53 @@ func (f *ftpFS) Remove(_ context.Context, name string) error {
 	return translateFTPError(err)
 }
 
+// abort drops every connection under whatever is waiting on one.
+func (f *ftpFS) abort() { f.open.closeAll() }
+
 // Close implements FS.
 func (f *ftpFS) Close() error { return f.conn.Quit() }
+
+// connSet keeps track of the connections that are open, forgetting each as it
+// closes so that a long-lived FTP session does not collect one per transfer.
+type connSet struct {
+	mu    sync.Mutex
+	conns map[*setConn]struct{}
+}
+
+type setConn struct {
+	net.Conn
+	set *connSet
+}
+
+func (c *setConn) Close() error {
+	c.set.mu.Lock()
+	delete(c.set.conns, c)
+	c.set.mu.Unlock()
+	return c.Conn.Close()
+}
+
+func (s *connSet) add(c net.Conn) net.Conn {
+	sc := &setConn{Conn: c, set: s}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conns == nil {
+		s.conns = map[*setConn]struct{}{}
+	}
+	s.conns[sc] = struct{}{}
+	return sc
+}
+
+func (s *connSet) closeAll() {
+	s.mu.Lock()
+	conns := make([]*setConn, 0, len(s.conns))
+	for c := range s.conns {
+		conns = append(conns, c)
+	}
+	s.mu.Unlock()
+	for _, c := range conns {
+		_ = c.Close()
+	}
+}
 
 // countingReader records how many bytes were handed to the server, since Stor
 // does not report it.

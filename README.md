@@ -267,6 +267,16 @@ can. When one cycle finds both, neither is sent and both are recorded as
 failed: sending them would keep only one, report both as delivered, and with
 `post_action: delete` remove both sources.
 
+**A connection that goes quiet is given up on.** Opening one — the TCP
+connection, the handshake, the login and, for SMB, mounting the share — has to
+finish within `remote.connect_timeout` (30 seconds by default). Once open, a
+connection that moves no data for `remote.io_timeout` (5 minutes) while
+something is waiting on it is dropped, and the file is tried again over a new
+one. That measures silence, not duration: a large file that keeps moving is
+never cut off, and nor is a connection that is merely idle between files.
+Without these, a server that accepted the connection and then hung held a
+watching job there for good, since cycles run one at a time.
+
 **A watching job that keeps failing goes quiet rather than loud.** When a whole
 cycle cannot run — an unreachable server, say — the pause before the next one
 doubles, up to five minutes, and returns to `poll_interval` as soon as a cycle

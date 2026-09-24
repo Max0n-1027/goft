@@ -72,6 +72,13 @@ remote:
   # accepts the connection and then says nothing is given up on after this,
   # and the attempt counts as a failure like any other.
   # connect_timeout: 30s
+  #
+  # How long an open connection may go without moving any data while something
+  # is waiting on it. Past that it is dropped and the file tried again over a
+  # new one, as for any other dropped connection. It measures silence, not
+  # duration: a large file that keeps moving is never cut off, however long it
+  # takes. 0 turns it off.
+  # io_timeout: 5m
 
 # --- Which files take part. Applied to the sending side. ---
 

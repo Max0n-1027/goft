@@ -214,6 +214,20 @@ was sent: its writer is most likely still at it, and settling on the next cycle
 is the better judge. The classification is by exclusion: anything not known to
 be permanent is treated as worth another try.
 
+A connection that goes quiet is handled the same way. When one moves no data
+for `remote.io_timeout` (5 minutes by default) while something is waiting on
+it, it is dropped, the waiting call fails with a message saying so, and the
+file is retried over a new connection:
+
+```
+the connection stalled: nothing moved for 5m0s, so the connection was dropped (...)
+```
+
+It measures silence rather than duration, so a transfer that keeps moving is
+never cut off however long it takes. Opening a connection has its own limit,
+`remote.connect_timeout` (30 seconds), covering the handshake and the login as
+well as the TCP connection.
+
 One file failing does not stop the cycle. The others carry on, the summary
 counts the failures, and `send`/`recv` exit 1 — as opposed to exit 2, which
 means the run could not start at all.

@@ -357,6 +357,9 @@ func (s *sftpFS) Remove(_ context.Context, name string) error {
 	return s.client.Remove(s.abs(name))
 }
 
+// abort drops the connection under whatever is waiting on it.
+func (s *sftpFS) abort() { _ = s.conn.Close() }
+
 // Close implements FS.
 func (s *sftpFS) Close() error {
 	err := s.client.Close()
