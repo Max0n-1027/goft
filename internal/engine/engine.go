@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -247,6 +248,9 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	if err != nil {
 		return Summary{}, err
 	}
+	if idx.caseInsensitive {
+		markCaseCollisions(targets)
+	}
 
 	s, err := e.dispatch(ctx, conns, targets, idx)
 	if err != nil {
@@ -439,6 +443,42 @@ type target struct {
 	overSizeCap  bool
 	recurring    bool
 	index, total int
+	// collidesWith names another file of this cycle that the destination
+	// would store under the same name, because it does not distinguish case.
+	collidesWith string
+}
+
+// markCaseCollisions finds files that differ only in case, for a destination
+// that does not tell them apart.
+//
+// A case sensitive source can hold A.csv and a.csv side by side; a Windows or
+// macOS disk or an SMB share cannot. Sending both would leave whichever arrived
+// last, report both as delivered, and with post_action delete or move take both
+// sources away — one of the two files lost with nothing to show for it. Neither
+// is sent: there is no telling which one the destination should end up with.
+//
+// Whole paths are compared, so Invoices/a.csv and invoices/a.csv collide too.
+// Files the size cap turns away are not written, so they collide with nothing.
+func markCaseCollisions(targets []target) {
+	byFolded := map[string][]int{}
+	for i, t := range targets {
+		if !t.overSizeCap {
+			folded := strings.ToLower(t.file.Path)
+			byFolded[folded] = append(byFolded[folded], i)
+		}
+	}
+	for _, group := range byFolded {
+		if len(group) < 2 {
+			continue
+		}
+		for _, i := range group {
+			other := group[0]
+			if other == i {
+				other = group[1]
+			}
+			targets[i].collidesWith = targets[other].file.Path
+		}
+	}
 }
 
 // collect scans, waits for files to settle and applies the size limit.

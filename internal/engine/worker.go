@@ -93,6 +93,12 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		res.Outcome, res.Reason, res.Recurring = Skipped, ReasonSizeLimit, t.recurring
 		return finish(res)
 	}
+	if t.collidesWith != "" {
+		// fs.ErrInvalid, like a name Windows cannot store: it is the name that
+		// is the problem, and it would be the problem on every attempt.
+		return fail(fmt.Errorf("%w: %s and %s differ only in case, which the destination does not distinguish, so neither is sent",
+			fs.ErrInvalid, t.file.Path, t.collidesWith))
+	}
 
 	name := t.file.Path
 	dir := fsys.Dir(name)

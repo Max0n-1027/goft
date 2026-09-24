@@ -251,6 +251,12 @@ about the name was the problem. It is not retried, since the name would be
 refused identically next time. The rest of the cycle carries on, and every name
 Windows can hold as written is transferred as before.
 
+**Names that differ only in case are not merged.** A Windows or macOS disk or
+an SMB share cannot hold `A.csv` and `a.csv` side by side, while a Linux source
+can. When one cycle finds both, neither is sent and both are recorded as
+failed: sending them would keep only one, report both as delivered, and with
+`post_action: delete` remove both sources.
+
 **A watching job that keeps failing goes quiet rather than loud.** When a whole
 cycle cannot run — an unreachable server, say — the pause before the next one
 doubles, up to five minutes, and returns to `poll_interval` as soon as a cycle

@@ -22,6 +22,12 @@ cannot tell `FOO.CSV` from `foo.csv` (a Windows or macOS disk, or an SMB share).
 Otherwise a file that is already there would be transferred again on every
 cycle.
 
+The same destinations cannot hold two files whose names differ only in case,
+which a Linux source can. When one cycle finds `A.csv` and `a.csv` — or
+`Invoices/a.csv` and `invoices/a.csv` — neither is sent, and both are recorded
+as failed, naming the other. Sending both would leave whichever arrived last,
+report both as delivered, and with `post_action: delete` remove both sources.
+
 What happens next depends on `on_exists`:
 
 - **`skip`** (default) — no transfer, and no post-transfer action either:
