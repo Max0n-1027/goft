@@ -177,6 +177,12 @@ func (c *Console) Summary(s engine.Summary) {
 	case s.PlannedOnly:
 		c.emit(fmt.Sprintf("%d files, %s would be transferred (nothing was sent)",
 			s.Total, humanBytes(s.Bytes)))
+	case s.Interrupted:
+		// Worth seeing even when nothing had moved yet: the run was stopped,
+		// and what it left undone is part of the answer.
+		c.notable = true
+		c.emit(fmt.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed, %d not started  interrupted after %.1fs",
+			s.Total+s.NotStarted, s.Succeeded, humanBytes(s.Bytes), s.Skipped, s.Failed, s.NotStarted, s.Elapsed.Seconds()))
 	case s.Total > 0:
 		c.emit(fmt.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed  in %.1fs",
 			s.Total, s.Succeeded, humanBytes(s.Bytes), s.Skipped, s.Failed, s.Elapsed.Seconds()))

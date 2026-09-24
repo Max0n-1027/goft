@@ -132,6 +132,10 @@ type Summary struct {
 	// DirsRemoved counts the directories the cycle emptied and then removed,
 	// which only happens with remove_empty_dirs.
 	DirsRemoved int
+	// Interrupted marks a cycle that was asked to stop part way. The files
+	// under way were finished; NotStarted counts the ones never begun.
+	Interrupted bool
+	NotStarted  int
 	// PlannedOnly marks a dry run, where nothing was sent and the counts
 	// describe what would have been.
 	PlannedOnly bool

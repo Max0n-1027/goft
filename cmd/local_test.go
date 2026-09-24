@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // localPair is an end-to-end setup with both sides on this machine: no server,
@@ -242,5 +243,46 @@ func TestTheLogOpensWithTheSettings(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "stable_duration is 0") {
 		t.Error("the warning should still be there, after the settings")
+	}
+}
+
+func TestSendStopsCleanlyOnAnInterrupt(t *testing.T) {
+	// A one-shot run had no signal handling at all: Ctrl+C killed it where it
+	// stood, with nothing in the log to say the run had not finished.
+	requirePOSIX(t, "sends SIGINT to its own process")
+	p := newLocalPair(t, "")
+	logFile := filepath.Join(t.TempDir(), "goft.log")
+	// Settling holds the run for a while before anything is sent, which is
+	// where the interrupt lands.
+	p.cfgPath = p.config(p.src, p.dst, "log:\n  path: "+logFile+"\n")
+	body, _ := os.ReadFile(p.cfgPath)
+	if err := os.WriteFile(p.cfgPath, []byte(strings.Replace(string(body), "stable_duration: 0s", "stable_duration: 10s", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p.write(p.src, "invoice.csv", "id\n")
+
+	done := make(chan int, 1)
+	go func() { done <- p.run("send", "--no-console") }()
+	time.Sleep(500 * time.Millisecond)
+	self, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := self.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case code := <-done:
+		// Stopped before the run was complete, which is what 2 means.
+		if code != 2 {
+			t.Errorf("exit code = %d, want 2", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run did not stop on SIGINT")
+	}
+	b, _ := os.ReadFile(logFile)
+	if !strings.Contains(string(b), `"msg":"interrupted"`) {
+		t.Errorf("the log should say the run was interrupted:\n%s", b)
 	}
 }

@@ -277,6 +277,14 @@ never cut off, and nor is a connection that is merely idle between files.
 Without these, a server that accepted the connection and then hung held a
 watching job there for good, since cycles run one at a time.
 
+**Stopping finishes what is under way.** Ctrl+C or SIGTERM stops the run from
+starting anything new, while a file already being transferred is finished — a
+stop never leaves more than a `.goft.tmp` behind, and usually not even that.
+One that has stalled is dropped after `remote.io_timeout`, which bounds how
+long a stop can take. The cycle's summary is still written, as `cycle
+interrupted` with the number of files not started; `serve` then exits 0, and
+`send` or `recv` exit 2, since the run did not finish.
+
 **A watching job that keeps failing goes quiet rather than loud.** When a whole
 cycle cannot run — an unreachable server, say — the pause before the next one
 doubles, up to five minutes, and returns to `poll_interval` as soon as a cycle
@@ -351,7 +359,7 @@ GOFT_WINCRED_TEST=1 go test -count=1 ./internal/fsys/ -run Credential -v
 |---|---|
 | 0 | Finished normally, including `serve` stopping on a signal |
 | 1 | The run completed but at least one file failed |
-| 2 | The run could not be completed: bad configuration, or the connection failed |
+| 2 | The run could not be completed: bad configuration, the connection failed, or it was stopped before it finished |
 
 `goft test` is the exception to the last row: it reports both directions and
 only fails when neither of them works, because a read-only account is a perfectly

@@ -275,6 +275,14 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 
 	s, err := e.dispatch(ctx, conns, sendable, idx, collector)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Asked to stop: the files under way were finished and nothing
+			// after them was started. What the cycle did get through is
+			// still worth a summary, and so is what it left.
+			s.Interrupted = true
+			s.NotStarted = len(targets) - s.Total
+			s = e.finishCycle(start, s)
+		}
 		return s, err
 	}
 	return e.finishCycle(start, s), nil
@@ -293,7 +301,12 @@ func (e *Engine) finishCycle(start time.Time, s Summary) Summary {
 		// zero for it in every summary it ever writes.
 		summary = append(summary, "dirs_removed", s.DirsRemoved)
 	}
-	e.log.Info("cycle complete", summary...)
+	if s.Interrupted {
+		summary = append(summary, "not_started", s.NotStarted)
+		e.log.Warn("cycle interrupted", summary...)
+	} else {
+		e.log.Info("cycle complete", summary...)
+	}
 	if e.opts.OnSummary != nil {
 		e.opts.OnSummary(s)
 	}

@@ -180,7 +180,8 @@ log:
 #          read or a directive in it that is ignored, a key skipped because it
 #          is locked, a file over the size cap the first time it is seen, a
 #          retry of a transfer or of a post-transfer action, a temporary file
-#          or an emptied directory that could not be removed
+#          or an emptied directory that could not be removed, a cycle stopped
+#          part way by Ctrl+C or SIGTERM
 #   info   + the settings at startup and a record at shutdown, one record per
 #            file including the source and destination hashes, each emptied
 #            directory removed, a summary per cycle

@@ -1,7 +1,9 @@
 package fsys
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -123,4 +125,33 @@ func TestFTPConnectionOutlivesItsConnectTimeout(t *testing.T) {
 
 func TestLiveConnectionOutlivesItsConnectTimeout(t *testing.T) {
 	checkOutlivesConnectTimeout(t, liveRemote(t))
+}
+
+func TestLiveATransferUnderWayOutlivesAStopRequest(t *testing.T) {
+	// A stop request cancels the context the connection was opened with. The
+	// file under way is meant to finish regardless — only SMB kept that context
+	// for every call, and cut the transfer short with it.
+	r := liveRemote(t)
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	fs, err := NewRemote(ctx, r)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer fs.Close()
+
+	name := fmt.Sprintf("outlives-stop-%d.dat", time.Now().UnixNano())
+	defer fs.Remove(context.Background(), name)
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		stop()
+	}()
+	payload := make([]byte, 32<<20)
+	n, err := fs.Write(ctx, name, bytes.NewReader(payload))
+	if err != nil || n != int64(len(payload)) {
+		t.Fatalf("Write = %d, %v; want the whole file despite the stop", n, err)
+	}
+	if ctx.Err() == nil {
+		t.Skip("the transfer finished before the stop arrived; nothing was tested")
+	}
 }

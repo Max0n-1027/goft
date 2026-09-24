@@ -91,6 +91,10 @@ log goes to stderr so that the two never mix.
 
 	0  finished normally, including serve stopping on a signal
 	1  the run completed but at least one file failed
-	2  the run could not be completed: bad configuration, or the connection failed
+	2  the run could not be completed: bad configuration, the connection failed,
+	   or it was stopped before it finished
+
+Ctrl+C or SIGTERM stops a run from starting anything new; a file already being
+transferred is finished first.
 */
 package main

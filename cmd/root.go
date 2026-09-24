@@ -285,7 +285,13 @@ func runOnce(ctx context.Context, dir config.Direction, dryRun bool) error {
 	defer j.close()
 
 	summary, err := j.engine.RunOnce(ctx)
-	if err != nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
+		// Stopped on request. The files under way were finished; the cycle's
+		// own summary, if it got that far, says what was left.
+		j.log.Warn("interrupted", logging.KeyEvent, logging.EventLifecycle)
+		return startupError(errors.New("interrupted before the run was complete"))
+	case err != nil:
 		j.log.Error("run failed", logging.KeyEvent, logging.EventLifecycle, logging.KeyError, err.Error())
 		return startupError(err)
 	}

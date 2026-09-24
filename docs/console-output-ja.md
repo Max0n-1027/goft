@@ -80,6 +80,20 @@ goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (4
 何も転送されず、各行にその理由が入ります。`on_exists: skip` のジョブが正常で、やることが無いときの姿です。
 だからこそ `serve` はこうした周期について黙っています。数秒ごとにこれを出力し続けても意味がないためです。
 
+## 途中で止めた場合
+
+Ctrl+C を受けると、転送中のファイルは最後まで終わらせ、次のファイルには手を付けません。
+次の例は、64 MiB のファイル3つのうち1つ目の転送が始まって1秒足らずで止めたものです。
+
+```console
+goft statement-upload  /data/out/statement -> sftp://invoice-sftp/upload/statement  (3 files, 192.0 MiB)
+[1/3] part-1.dat                                 64.0 MiB  ok          6.4s
+3 files: 1 transferred (64.0 MiB), 0 skipped, 0 failed, 2 not started  interrupted after 6.4s
+goft: interrupted before the run was complete
+```
+
+送っていたファイルは完全に届き、残りの2つは次の実行に回されます。この実行は完了していないので、終了コードは 2 です。
+
 ## `serve` の場合
 
 `--console` を付けた `serve` は、周期が終わってから、しかも実際に何かが起きたときだけ報告します。

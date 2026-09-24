@@ -107,8 +107,12 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 		root:    strings.TrimPrefix(r.Path, "/"),
 		desc:    fmt.Sprintf("smb://%s/%s/%s", addr, r.Share, strings.TrimPrefix(r.Path, "/")),
 		session: session,
-		share:   share.WithContext(ctx),
-		conn:    conn,
+		// The share keeps this context for every call it makes. A stop
+		// request cancels the one the connection was opened with, and a
+		// transfer under way is meant to finish, as it does on the other
+		// protocols; a stalled one is dropped by io_timeout instead.
+		share: share.WithContext(context.WithoutCancel(ctx)),
+		conn:  conn,
 	}, nil
 }
 

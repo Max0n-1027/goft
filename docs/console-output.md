@@ -92,6 +92,21 @@ Nothing was transferred, and each line says why. This is what a healthy
 also why `serve` keeps quiet about such cycles rather than printing this every
 few seconds.
 
+## Stopping part way
+
+Ctrl+C lets the file under way finish and starts no other. Here it came less
+than a second into the first of three 64 MiB files:
+
+```console
+goft statement-upload  /data/out/statement -> sftp://invoice-sftp/upload/statement  (3 files, 192.0 MiB)
+[1/3] part-1.dat                                 64.0 MiB  ok          6.4s
+3 files: 1 transferred (64.0 MiB), 0 skipped, 0 failed, 2 not started  interrupted after 6.4s
+goft: interrupted before the run was complete
+```
+
+The file that was being sent arrived whole; the other two were left for the
+next run, and the exit status is 2 because this one did not finish.
+
 ## `serve`
 
 With `--console`, `serve` reports a cycle once it is over, and only when

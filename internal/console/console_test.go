@@ -309,3 +309,27 @@ func TestDebugShowsARateOnlyForAFileThatMoved(t *testing.T) {
 		t.Errorf("identical: %q, want the digest still shown", lines[1])
 	}
 }
+
+func TestAnInterruptedCycleSaysSo(t *testing.T) {
+	var buf bytes.Buffer
+	c := newTestConsole(&buf, slog.LevelInfo, config.DirSend)
+	c.Summary(engine.Summary{Total: 1, Succeeded: 1, Bytes: 3, Interrupted: true, NotStarted: 2})
+
+	out := buf.String()
+	for _, want := range []string{"3 files", "1 transferred", "2 not started", "interrupted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary = %q, want it to mention %q", out, want)
+		}
+	}
+}
+
+func TestAWatchingRunShowsAnInterruptedCycle(t *testing.T) {
+	// Being stopped part way is worth seeing even when nothing had moved yet.
+	var buf bytes.Buffer
+	c := New(Options{Writer: &buf, Level: slog.LevelInfo, Job: "invoice", Buffered: true})
+	c.Plan(engine.Plan{Files: []scan.File{{Path: "a.csv"}}})
+	c.Summary(engine.Summary{Interrupted: true, NotStarted: 1})
+	if !strings.Contains(buf.String(), "interrupted") {
+		t.Errorf("output = %q, want the interrupted cycle shown", buf.String())
+	}
+}
