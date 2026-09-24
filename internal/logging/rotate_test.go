@@ -214,3 +214,83 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+func TestRotationSparesAJobWhoseNameExtendsOurs(t *testing.T) {
+	// Several jobs commonly log into one directory, and one job's name can be
+	// the start of another's: invoice and invoice-archive. The second job's
+	// files begin with "invoice-" too, and matching on that prefix alone had
+	// the first job deleting the second one's logs as if they were its own old
+	// generations.
+	for _, tc := range []struct {
+		rotation config.Rotation
+		other    string
+	}{
+		{config.RotationDaily, "invoice-archive-2026-01-01.log"},
+		{config.RotationDaily, "invoice-2026-archive-01.log"},
+		{config.RotationMonthly, "invoice-archive-2026-01.log"},
+		{config.RotationMonthly, "invoice-2026-2026-01.log"},
+	} {
+		t.Run(string(tc.rotation)+"/"+tc.other, func(t *testing.T) {
+			dir := t.TempDir()
+			other := filepath.Join(dir, tc.other)
+			if err := os.WriteFile(other, []byte("another job\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			old := time.Now().AddDate(0, 0, -400)
+			if err := os.Chtimes(other, old, old); err != nil {
+				t.Fatal(err)
+			}
+
+			w := newRotatingWriter(config.Log{
+				Path:       filepath.Join(dir, "invoice.log"),
+				Rotation:   tc.rotation,
+				MaxBackups: 1,
+				MaxAgeDays: 1,
+			}, time.Now)
+			defer w.Close()
+			if _, err := w.Write([]byte("x\n")); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := os.Stat(other); err != nil {
+				t.Errorf("%s belongs to another job and must not be pruned: %v", tc.other, err)
+			}
+		})
+	}
+}
+
+func TestRotationStillPrunesItsOwnSizeBackups(t *testing.T) {
+	// A dated file that also outgrew max_size_mb has lumberjack backups beside
+	// it, compressed or not. Those are this job's generations and are pruned
+	// with the rest.
+	dir := t.TempDir()
+	now := time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC)
+	old := now.AddDate(0, 0, -200)
+	for _, name := range []string{
+		"job-2026-01-01.log",
+		"job-2026-01-01-2026-01-01T10-00-00.000.log",
+		"job-2026-01-01-2026-01-01T11-00-00.000.log.gz",
+	} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("old\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	w := newRotatingWriter(config.Log{
+		Path:       filepath.Join(dir, "job.log"),
+		Rotation:   config.RotationDaily,
+		MaxAgeDays: 30,
+	}, func() time.Time { return now })
+	defer w.Close()
+	if _, err := w.Write([]byte("today\n")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := logNames(t, dir); !equalStrings(got, []string{"job-2026-08-20.log"}) {
+		t.Errorf("files = %v, want every expired generation gone", got)
+	}
+}

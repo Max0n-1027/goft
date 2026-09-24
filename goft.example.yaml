@@ -138,6 +138,10 @@ log:
   # out of a log a watching process has been appending to for days.
   fields: [src, dst, protocol, bytes, duration_ms, verify, result, reason, error, hash_src, hash_dst, attempt]
   max_size_mb: 100
+  # Old generations beyond these limits are deleted. Only this job's own files
+  # are ever touched — invoice-2026-08-30.log, and lumberjack's backups of it —
+  # so several jobs can log into one directory, even when one job's name is the
+  # start of another's.
   max_backups: 7
   max_age_days: 30
   compress: true
