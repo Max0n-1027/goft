@@ -177,6 +177,12 @@ func (f *ftpFS) Write(_ context.Context, name string, r io.Reader) (int64, error
 // MkdirAll implements FS. FTP only creates one directory at a time, and
 // reports an error when it already exists, so each level is attempted in turn
 // and existing levels are tolerated.
+//
+// Whether a level that MKD refused is in fact there is decided by dirExists,
+// not by listing it. A listing proves nothing on vsftpd, which answers LIST of
+// a path that does not exist with an empty listing, and elsewhere a listing of
+// a file succeeds too; either way MKD's real reason for refusing was dropped
+// and surfaced later as a write that could not create its file.
 func (f *ftpFS) MkdirAll(ctx context.Context, dir string) error {
 	if dir == "" {
 		return nil
@@ -185,7 +191,8 @@ func (f *ftpFS) MkdirAll(ctx context.Context, dir string) error {
 	for _, part := range Segments(dir) {
 		built = path.Join(built, part)
 		if err := f.conn.MakeDir(f.abs(built)); err != nil {
-			if _, statErr := f.conn.List(f.abs(built)); statErr != nil {
+			exists, existsErr := f.dirExists(f.abs(built))
+			if existsErr != nil || !exists {
 				return translateFTPError(err)
 			}
 		}

@@ -195,4 +195,21 @@ func runFSConformance(t *testing.T, newFS func(t *testing.T) FS) {
 			t.Errorf("Stat after Remove = %v, want fs.ErrNotExist", err)
 		}
 	})
+
+	t.Run("mkdir over a file fails", func(t *testing.T) {
+		// A directory that could not be created must be reported, not taken
+		// for one that was already there. On FTP that decision once rested on
+		// a listing, which vsftpd answers with an empty success even for a path
+		// that is not a directory, so the live suite is where this bites.
+		f := newFS(t)
+		defer f.Close()
+		defer f.Remove(ctx, "blocker")
+
+		if _, err := f.Write(ctx, "blocker", strings.NewReader("a file, not a directory")); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.MkdirAll(ctx, "blocker"); err == nil {
+			t.Error("MkdirAll reported success for a directory it could not create")
+		}
+	})
 }
