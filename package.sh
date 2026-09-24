@@ -19,7 +19,8 @@
 #
 # Environment:
 #   VERSION            version stamped into the binaries and the archive names
-#                      (default: git describe, or "dev")
+#                      (default: git describe against the v* tags, or "dev";
+#                      the main-* tags CI adds are never used for a name)
 #   OUT_DIR            where the binaries are built (default: build); it is
 #                      emptied first, so that a stale binary from an earlier
 #                      build cannot end up in a release
@@ -50,7 +51,7 @@ cd "$(dirname "$0")"
 # because the archive names and the file dates have to agree with what was
 # stamped into the binaries.
 if [ -z "${VERSION:-}" ]; then
-    VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo dev)
+    VERSION=$(git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 fi
 if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
     SOURCE_DATE_EPOCH=$(git log -1 --format=%ct 2>/dev/null || date +%s)
