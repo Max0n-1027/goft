@@ -114,9 +114,13 @@ Nothing needs to be written in plain text:
 What the configuration file states always wins over a default file. Run
 `goft test` to see the values that were resolved and where each one came from.
 
-Two ssh_config features are not supported, and are reported as warnings rather
-than applied silently: `Match` blocks, and `ProxyJump`/`ProxyCommand`. Put the
-settings you need directly in the job file instead. ssh-agent is not used;
+`Match host` and `Match all` in ssh_config are understood. Any other `Match`
+criterion makes the parser reject the whole file, and a default file it rejects
+is skipped with a warning — none of its settings apply, while the other default
+file still does; a file named by `ssh_config_file` is an error instead.
+`ProxyJump` and `ProxyCommand` are not supported, and are reported as warnings
+rather than applied silently. Put the settings you need directly in the job file
+instead. ssh-agent is not used;
 supply the key with `private_key`, and its passphrase with
 `private_key_passphrase` if it has one.
 

@@ -83,7 +83,7 @@ remote:
 
 設定ファイルに書いた値は常に既定ファイルより優先されます。何がどこから解決されたかは `goft test` で確認できます。
 
-ssh_config の機能のうち2つは未対応で、黙って無視せず警告として報告します。`Match` ブロックと `ProxyJump` / `ProxyCommand` です。必要な設定はジョブファイルに直接書いてください。ssh-agent は使いません。鍵は `private_key` で、パスフレーズつきなら `private_key_passphrase` で渡してください。
+ssh_config の `Match host` と `Match all` は解釈します。それ以外の `Match` の条件があると、パーサーはファイル全体を受け付けません。既定のファイルがそうなった場合は警告を出して読み飛ばし、そのファイルの設定は一切適用しません（もう一方の既定ファイルは引き続き使います）。`ssh_config_file` で指定したファイルの場合はエラーになります。`ProxyJump` / `ProxyCommand` は未対応で、黙って無視せず警告として報告します。必要な設定はジョブファイルに直接書いてください。ssh-agent は使いません。鍵は `private_key` で、パスフレーズつきなら `private_key_passphrase` で渡してください。
 
 goft が自分で見つける鍵（ssh_config の `IdentityFile`、または `~/.ssh/id_ed25519` と `~/.ssh/id_rsa`）は、そのまま使える場合にだけ使います。パスフレーズで保護されていて `private_key_passphrase` が設定されていない鍵は、警告を出して候補から外します。個人の鍵に付けたパスフレーズが、パスワード認証のジョブの邪魔をしないようにするためです。`private_key` で指定した鍵は常に使い、復号できなければエラーにします。
 

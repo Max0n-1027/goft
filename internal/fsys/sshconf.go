@@ -3,6 +3,7 @@ package fsys
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -20,6 +21,9 @@ import (
 type sshLookup struct {
 	get func(key string) (string, bool)
 	all func(key string) []string
+	// warnings explain default files that could not be read, so that their
+	// settings not applying is said out loud.
+	warnings []string
 }
 
 func disabledLookup() sshLookup {
@@ -32,49 +36,96 @@ func disabledLookup() sshLookup {
 // newSSHLookup builds the accessor for a host alias.
 //
 // When the job names a file, that file replaces the search path entirely, and
-// a value is "found" precisely when it appears there. When the default search
-// path is used the library substitutes its own built-in defaults, so a value
-// equal to the built-in default is attributed to `default` rather than to the
-// file. The resolved value is the same either way; only the reported source can
-// be off in that one case.
+// failing to read it is an error: the job asked for it. Otherwise the default
+// files are consulted in the order ssh uses, ~/.ssh/config and then
+// /etc/ssh/ssh_config, the first to set a value winning.
+//
+// The default files are read one by one, so that one the parser rejects is
+// skipped with a warning while the other still applies. Left to the library,
+// a rejected ~/.ssh/config — and it rejects every Match criterion but host and
+// all — silently took both files with it: a job relying on its Port or User
+// connected somewhere else with no word as to why. Reading them here also
+// finds the home directory the way the rest of goft does, through
+// os.UserHomeDir, rather than through the account database.
 func newSSHLookup(r config.Remote) (sshLookup, error) {
 	if !r.SSHConfigEnabled() {
 		return disabledLookup(), nil
 	}
 
 	if r.SSHConfigFile != "" {
-		f, err := os.Open(r.SSHConfigFile)
+		cfg, err := decodeSSHConfig(r.SSHConfigFile)
 		if err != nil {
-			return sshLookup{}, fmt.Errorf("open ssh_config %s: %w", r.SSHConfigFile, err)
+			return sshLookup{}, err
 		}
-		defer f.Close()
-		cfg, err := ssh_config.Decode(f)
-		if err != nil {
-			return sshLookup{}, fmt.Errorf("parse ssh_config %s: %w", r.SSHConfigFile, err)
-		}
-		return sshLookup{
-			get: func(key string) (string, bool) {
-				v, err := cfg.Get(r.Host, key)
-				return v, err == nil && v != ""
-			},
-			all: func(key string) []string {
-				v, err := cfg.GetAll(r.Host, key)
-				if err != nil {
-					return nil
-				}
-				return v
-			},
-		}, nil
+		return configLookup(r.Host, []*ssh_config.Config{cfg}), nil
 	}
 
-	us := &ssh_config.UserSettings{IgnoreErrors: true}
+	var (
+		configs  []*ssh_config.Config
+		warnings []string
+	)
+	for _, path := range defaultSSHConfigFiles() {
+		cfg, err := decodeSSHConfig(path)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			continue
+		case err != nil:
+			warnings = append(warnings, fmt.Sprintf(
+				"%v; none of its settings apply (only Match host and Match all are understood, so put what the job needs in the job file)", err))
+			continue
+		}
+		configs = append(configs, cfg)
+	}
+	look := configLookup(r.Host, configs)
+	look.warnings = warnings
+	return look, nil
+}
+
+// defaultSSHConfigFiles lists the files ssh reads when none is named, most
+// specific first.
+func defaultSSHConfigFiles() []string {
+	var files []string
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		files = append(files, filepath.Join(home, ".ssh", "config"))
+	}
+	return append(files, filepath.Join(string(filepath.Separator), "etc", "ssh", "ssh_config"))
+}
+
+func decodeSSHConfig(path string) (*ssh_config.Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open ssh_config %s: %w", path, err)
+	}
+	defer f.Close()
+	cfg, err := ssh_config.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("parse ssh_config %s: %w", path, err)
+	}
+	return cfg, nil
+}
+
+// configLookup answers from configs in order, the first to set a key winning,
+// as ssh does across its files. A value counts as found precisely when a file
+// sets it, so the source goft test reports is always the true one.
+func configLookup(host string, configs []*ssh_config.Config) sshLookup {
 	return sshLookup{
 		get: func(key string) (string, bool) {
-			v := us.Get(r.Host, key)
-			return v, v != "" && v != ssh_config.Default(key)
+			for _, cfg := range configs {
+				if v, err := cfg.Get(host, key); err == nil && v != "" {
+					return v, true
+				}
+			}
+			return "", false
 		},
-		all: func(key string) []string { return us.GetAll(r.Host, key) },
-	}, nil
+		all: func(key string) []string {
+			for _, cfg := range configs {
+				if v, err := cfg.GetAll(host, key); err == nil && len(v) > 0 {
+					return v
+				}
+			}
+			return nil
+		},
+	}
 }
 
 // resolveSFTP merges the job configuration with ~/.ssh/config.
@@ -89,6 +140,7 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 	}
 
 	res := &Resolved{Host: r.Host, SkipHostKey: r.InsecureSkipHostKeyCheck}
+	res.Warnings = append(res.Warnings, look.warnings...)
 	home, _ := os.UserHomeDir()
 
 	resolveHost(res, r, look)
