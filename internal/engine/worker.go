@@ -46,7 +46,7 @@ func (e *Engine) attempt(ctx context.Context, c *conn, t target, idx *destIndex)
 
 // tryOnce makes sure there is a connection and performs one transfer.
 func (e *Engine) tryOnce(ctx context.Context, c *conn, t target, idx *destIndex) Result {
-	if err := c.ensure(ctx); err != nil {
+	if err := c.ensure(); err != nil {
 		return Result{
 			Index: t.index, Total: t.total, Path: t.file.Path, Bytes: t.file.Size,
 			Outcome: Failed, Err: err,
@@ -353,7 +353,7 @@ func (e *Engine) postAction(ctx context.Context, c *conn, name string) error {
 		if !e.pause(ctx, n, name, err) {
 			return err
 		}
-		if cerr := c.ensure(ctx); cerr != nil {
+		if cerr := c.ensure(); cerr != nil {
 			return cerr
 		}
 	}

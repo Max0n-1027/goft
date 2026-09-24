@@ -144,7 +144,7 @@ func TestADirectoryThatCannotBeRemovedIsOnlyAWarning(t *testing.T) {
 		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
 
-	c := &conn{e: e, src: h.src, dst: h.dst}
+	c := &conn{e: e, ctx: context.Background(), src: h.src, dst: h.dst}
 	if removed := e.pruneEmptied(context.Background(), c, []string{"2026-08"}); removed != 0 {
 		t.Errorf("removed = %d, want none: the removal failed", removed)
 	}
@@ -167,7 +167,7 @@ func TestPruningLeavesADirectoryThatFilledUpAgain(t *testing.T) {
 		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
 
-	c := &conn{e: e, src: h.src, dst: h.dst}
+	c := &conn{e: e, ctx: context.Background(), src: h.src, dst: h.dst}
 	if removed := e.pruneEmptied(context.Background(), c, []string{"2026-08"}); removed != 0 {
 		t.Errorf("removed = %d, want none: the directory is not empty", removed)
 	}

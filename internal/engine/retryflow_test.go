@@ -206,3 +206,43 @@ func TestAnArchiveCollisionIsNotRetried(t *testing.T) {
 		t.Errorf("result = %+v, want a failure recognisable as an existing file", r)
 	}
 }
+
+func TestAConnectionRebuiltForARetryOutlivesTheWorkers(t *testing.T) {
+	// A connection may keep the context it was opened with for as long as it
+	// lives: an SMB share does, and fails every call once that context is done.
+	// Rebuilt from inside a worker, it used to get the worker group's context,
+	// which is cancelled the moment the workers finish — and worker 0's
+	// connection is used after that, to remove the directories the cycle
+	// emptied.
+	h := newHarness(t)
+	h.cfg.Retry = config.Retry{MaxAttempts: 2, Interval: 0, Backoff: 1}
+	h.write(h.srcDir, "a.csv", "x")
+	h.dst.FailOpTimes(fsys.OpWrite, errors.New("connection reset by peer"), 1)
+
+	var opened []context.Context
+	record := func(ctx context.Context, fs fsys.FS) (fsys.FS, error) {
+		opened = append(opened, ctx)
+		return fs, nil
+	}
+	e := New(Options{
+		Config: h.cfg, Direction: config.DirSend,
+		NewSrc: func(ctx context.Context) (fsys.FS, error) { return record(ctx, h.src) },
+		NewDst: func(ctx context.Context) (fsys.FS, error) { return record(ctx, h.dst) },
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Single: true,
+	})
+	s, err := e.RunOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Succeeded != 1 {
+		t.Fatalf("summary = %+v, want the retry to have worked", s)
+	}
+	if len(opened) < 4 {
+		t.Fatalf("%d connections opened, want the pair rebuilt for the retry", len(opened))
+	}
+	for i, ctx := range opened {
+		if ctx.Err() != nil {
+			t.Errorf("connection %d was opened with a context that ended with the cycle's workers", i)
+		}
+	}
+}

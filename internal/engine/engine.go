@@ -307,7 +307,7 @@ func (e *Engine) finishCycle(start time.Time, s Summary) Summary {
 // how many connections a cycle holds open at once.
 func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets int) ([]*conn, error) {
 	workers := min(e.cfg.Workers, targets)
-	conns := []*conn{{e: e, src: src, dst: dst}}
+	conns := []*conn{{e: e, ctx: ctx, src: src, dst: dst}}
 
 	for i := 1; i < workers; i++ {
 		s, err := e.opts.NewSrc(ctx)
@@ -319,7 +319,7 @@ func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets 
 			_ = s.Close()
 			return conns, err
 		}
-		conns = append(conns, &conn{e: e, src: s, dst: d})
+		conns = append(conns, &conn{e: e, ctx: ctx, src: s, dst: d})
 	}
 	return conns, nil
 }
@@ -381,7 +381,7 @@ func (e *Engine) pruneEmptied(ctx context.Context, c *conn, dirs []string) int {
 	if !e.cfg.RemoveEmptyDirs || e.cfg.PostAction == config.PostNone || len(dirs) == 0 {
 		return 0
 	}
-	if err := c.ensure(ctx); err != nil {
+	if err := c.ensure(); err != nil {
 		e.log.Warn("could not reach the sending side to remove empty directories",
 			logging.KeyEvent, logging.EventPostAction, logging.KeyError, err.Error())
 		return 0
@@ -422,23 +422,30 @@ func (e *Engine) pruneEmptied(ctx context.Context, c *conn, dirs []string) int {
 // a transfer failed, and trying again over the same dead one would fail in the
 // same way.
 type conn struct {
-	e   *Engine
+	e *Engine
+	// ctx is the cycle's context, which every connection is opened with,
+	// including one rebuilt from inside a worker. A connection may keep that
+	// context for as long as it lives — an SMB share does, and fails every call
+	// once it is done — so it must not be the worker group's, which ends as
+	// soon as the workers do: worker 0's connection is used after that, to
+	// remove the directories the cycle emptied.
+	ctx context.Context
 	src fsys.FS
 	dst fsys.FS
 }
 
 // ensure opens whatever is not currently connected.
-func (c *conn) ensure(ctx context.Context) error {
+func (c *conn) ensure() error {
 	if c.src != nil && c.dst != nil {
 		return nil
 	}
 	c.close()
 
-	src, err := c.e.opts.NewSrc(ctx)
+	src, err := c.e.opts.NewSrc(c.ctx)
 	if err != nil {
 		return err
 	}
-	dst, err := c.e.opts.NewDst(ctx)
+	dst, err := c.e.opts.NewDst(c.ctx)
 	if err != nil {
 		_ = src.Close()
 		return err
