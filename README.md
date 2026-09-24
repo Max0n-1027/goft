@@ -75,7 +75,11 @@ files back and forth.
 
 Nothing needs to be written in plain text:
 
-- `${VAR}` anywhere in the file is replaced from the environment.
+- `${VAR}` in any value is replaced from the environment. A variable that is not
+  set is an error rather than an empty string, so a forgotten export stops the
+  job at startup instead of surfacing later as a failed login. Only the
+  `${...}` form is recognised: a `$` on its own is an ordinary character, so a
+  password may contain one, and a variable named in a comment is ignored.
 - **sftp** fills in anything you leave out from `~/.ssh/config`, including
   `HostName`, `Port`, `User`, `IdentityFile` and `UserKnownHostsFile`.
 - **ftp** fills in `user` and `password` from `~/.netrc`, or

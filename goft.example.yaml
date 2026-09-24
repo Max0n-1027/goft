@@ -3,6 +3,9 @@
 # One file describes one job, and one job runs in one process. The transfer
 # direction is not written here: `goft send` uploads, `goft recv` downloads.
 # To run several jobs, give each its own file and its own process.
+#
+# ${NAME} in any value is replaced from the environment, and a variable that is
+# not set stops the job at startup. A `$` on its own is an ordinary character.
 
 # Shown in every log record. Defaults to the file name without its extension.
 name: invoice-upload

@@ -18,8 +18,8 @@ same settings can drive an upload or a download.
 	post_action: move
 	move_to: /data/done/invoice
 
-[Load] reads a file, expands any ${VAR} from the environment and fills in the
-defaults. [Validate] then reports everything wrong with it at once, and
+[Load] reads a file, replaces ${NAME} in its values from the environment and
+fills in the defaults. [Validate] then reports everything wrong with it at once, and
 [ValidateForDirection] adds the checks that only make sense once the command is
 known. Credentials for ftp and sftp are deliberately not checked here, because
 ~/.netrc and ~/.ssh/config may still supply them.
@@ -316,8 +316,9 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("log.compress", true)
 }
 
-// Load reads path, expands ${ENV} references and decodes the result.
-// Validation is performed separately by [Validate].
+// Load reads path, replaces ${NAME} in its values from the environment and
+// decodes the result. A variable that is not set is an error. Validation is
+// performed separately by [Validate].
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -327,8 +328,11 @@ func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")
 	defaults(v)
-	if err := v.ReadConfig(bytes.NewReader([]byte(os.ExpandEnv(string(raw))))); err != nil {
+	if err := v.ReadConfig(bytes.NewReader(raw)); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	if err := expandEnv(v); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
 
 	var c Config

@@ -30,7 +30,7 @@ type smbFS struct {
 // for network shares are domain credentials, whose password the platform
 // reserves for the authentication packages, so they cannot be reused however
 // convenient that would be. Credentials come from the job configuration, from
-// ${ENV} expansion, or from a generic Credential Manager entry registered for
+// ${VAR} expansion, or from a generic Credential Manager entry registered for
 // goft.
 func resolveSMB(r config.Remote) (*Resolved, error) {
 	res := &Resolved{Host: r.Host, Port: r.Port, User: r.User, Password: r.Password}
