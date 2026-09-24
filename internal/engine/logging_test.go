@@ -421,3 +421,41 @@ func TestRateIsRecordedOnlyForFilesThatMoved(t *testing.T) {
 		}
 	}
 }
+
+func TestACycleWithOnlyOversizedFilesDoesNotConnect(t *testing.T) {
+	// A file that will never be sent sits in the source directory until
+	// someone deals with it. Reporting it needs nothing from the destination,
+	// and a watcher polling every few seconds used to open a connection to it
+	// every time just to say so.
+	h := newSeededBig(t)
+
+	s := h.run()
+	if h.dstOpens != 0 {
+		t.Errorf("destination opened %d times for a cycle with nothing to send", h.dstOpens)
+	}
+	if s.Total != 1 || s.Skipped != 1 {
+		t.Errorf("summary = %+v, want the oversized file still counted", s)
+	}
+	if r := h.result("big.dat"); r.Reason != ReasonSizeLimit {
+		t.Errorf("result = %+v, want it reported as over the size cap", r)
+	}
+}
+
+func TestOversizedFilesAreReportedAlongsideOthers(t *testing.T) {
+	h := newSeededBig(t)
+	h.write(h.srcDir, "small.csv", "id\n")
+
+	s := h.run()
+	if s.Total != 2 || s.Succeeded != 1 || s.Skipped != 1 {
+		t.Errorf("summary = %+v, want one sent and one over the cap", s)
+	}
+	// Each file is numbered within the cycle as a whole, so the console's
+	// [n/total] still adds up.
+	seen := map[int]bool{}
+	for _, r := range h.results {
+		if r.Total != 2 || r.Index < 1 || r.Index > 2 || seen[r.Index] {
+			t.Errorf("result %s numbered %d/%d", r.Path, r.Index, r.Total)
+		}
+		seen[r.Index] = true
+	}
+}

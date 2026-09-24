@@ -84,6 +84,11 @@ condition at debug, and a file that changes is reported again. Applying the cap
 after settling is what makes that possible — a file dropped during the scan
 would never be seen by the part that remembers it.
 
+Reporting a file over the cap needs nothing from the destination, so a cycle
+whose only candidates are over it does not connect there at all. A file left
+in the source directory for weeks would otherwise cost a watcher a connection
+on every poll.
+
 `max_file_size_mb: 0`, or leaving it out, means no limit.
 
 ## What that adds up to

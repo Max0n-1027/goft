@@ -226,6 +226,27 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		return Summary{}, nil
 	}
 
+	// Files the size cap turns away are reported here, before anything is
+	// opened. They need nothing from the destination, and a file that will
+	// never be sent can sit in the source directory for weeks: a watcher
+	// connecting on every poll just to say so again was pure cost.
+	collector := &Collector{}
+	sendable := make([]target, 0, len(targets))
+	for i, t := range targets {
+		t.index, t.total = i+1, len(targets)
+		if t.overSizeCap {
+			e.report(ctx, collector, Result{
+				Index: t.index, Total: t.total, Path: t.file.Path, Bytes: t.file.Size,
+				Outcome: Skipped, Reason: ReasonSizeLimit, Recurring: t.recurring,
+			})
+			continue
+		}
+		sendable = append(sendable, t)
+	}
+	if len(sendable) == 0 {
+		return e.finishCycle(start, collector.Summary()), nil
+	}
+
 	// The scanning connection becomes worker 0's, so the cycle never holds more
 	// than `workers` connections per side.
 	dst, err := e.opts.NewDst(ctx)
@@ -234,7 +255,7 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	}
 	srcOpen = false
 
-	conns, err := e.openConnections(ctx, src, dst, len(targets))
+	conns, err := e.openConnections(ctx, src, dst, len(sendable))
 	defer func() {
 		for _, c := range conns {
 			c.close()
@@ -244,18 +265,23 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		return Summary{}, err
 	}
 
-	idx, err := buildDestIndex(ctx, dst, targetDirs(targets))
+	idx, err := buildDestIndex(ctx, dst, targetDirs(sendable))
 	if err != nil {
 		return Summary{}, err
 	}
 	if idx.caseInsensitive {
-		markCaseCollisions(targets)
+		markCaseCollisions(sendable)
 	}
 
-	s, err := e.dispatch(ctx, conns, targets, idx)
+	s, err := e.dispatch(ctx, conns, sendable, idx, collector)
 	if err != nil {
 		return s, err
 	}
+	return e.finishCycle(start, s), nil
+}
+
+// finishCycle records the summary of a cycle that ran to the end.
+func (e *Engine) finishCycle(start time.Time, s Summary) Summary {
 	s.Elapsed = e.now().Sub(start)
 	summary := []any{
 		logging.KeyEvent, logging.EventSummary,
@@ -271,7 +297,7 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	if e.opts.OnSummary != nil {
 		e.opts.OnSummary(s)
 	}
-	return s, nil
+	return s
 }
 
 // openConnections gives each worker its own pair, reusing the two the cycle
@@ -303,15 +329,13 @@ func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets 
 // A file that fails is reported rather than returned, so one bad file does not
 // end the cycle; only a cancelled run or a connection that could not be rebuilt
 // comes back as an error.
-func (e *Engine) dispatch(ctx context.Context, conns []*conn, targets []target, idx *destIndex) (Summary, error) {
-	collector := &Collector{}
+func (e *Engine) dispatch(ctx context.Context, conns []*conn, targets []target, idx *destIndex, collector *Collector) (Summary, error) {
 	jobs := make(chan target)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		defer close(jobs)
-		for i, t := range targets {
-			t.index, t.total = i+1, len(targets)
+		for _, t := range targets {
 			select {
 			case jobs <- t:
 			case <-gctx.Done():
@@ -437,7 +461,8 @@ func (c *conn) close() {
 }
 
 // target is a file the cycle will handle. Files rejected by the size limit are
-// carried along so that they appear in the plan and in the summary.
+// carried along so that they appear in the plan and in the summary, but are
+// reported without being handed to a worker.
 type target struct {
 	file         scan.File
 	overSizeCap  bool
@@ -458,14 +483,13 @@ type target struct {
 // is sent: there is no telling which one the destination should end up with.
 //
 // Whole paths are compared, so Invoices/a.csv and invoices/a.csv collide too.
-// Files the size cap turns away are not written, so they collide with nothing.
+// Only files that are to be written are passed in: one the size cap turned away
+// collides with nothing.
 func markCaseCollisions(targets []target) {
 	byFolded := map[string][]int{}
 	for i, t := range targets {
-		if !t.overSizeCap {
-			folded := strings.ToLower(t.file.Path)
-			byFolded[folded] = append(byFolded[folded], i)
-		}
+		folded := strings.ToLower(t.file.Path)
+		byFolded[folded] = append(byFolded[folded], i)
 	}
 	for _, group := range byFolded {
 		if len(group) < 2 {

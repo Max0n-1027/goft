@@ -89,10 +89,6 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		return finish(res)
 	}
 
-	if t.overSizeCap {
-		res.Outcome, res.Reason, res.Recurring = Skipped, ReasonSizeLimit, t.recurring
-		return finish(res)
-	}
 	if t.collidesWith != "" {
 		// fs.ErrInvalid, like a name Windows cannot store: it is the name that
 		// is the problem, and it would be the problem on every attempt.
