@@ -286,8 +286,8 @@ VERSION=v1.0.0 ./build.sh linux/amd64 windows/amd64
 各アーカイブには実行ファイル・両方の README・ライセンス・設定例が入っており、`SHA256SUMS` で照合できます。
 
 ```bash
-tar xzf goft_v0.1.0_linux_amd64.tar.gz
-sudo install goft_v0.1.0_linux_amd64/goft /usr/local/bin/
+tar xzf goft_v0.2.0_linux_amd64.tar.gz
+sudo install goft_v0.2.0_linux_amd64/goft /usr/local/bin/
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 

@@ -497,8 +497,8 @@ Each archive holds the binary, both READMEs, the licence and the example
 configuration, and `SHA256SUMS` covers them all:
 
 ```bash
-tar xzf goft_v0.1.0_linux_amd64.tar.gz
-sudo install goft_v0.1.0_linux_amd64/goft /usr/local/bin/
+tar xzf goft_v0.2.0_linux_amd64.tar.gz
+sudo install goft_v0.2.0_linux_amd64/goft /usr/local/bin/
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 

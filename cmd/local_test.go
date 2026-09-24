@@ -263,7 +263,20 @@ func TestSendStopsCleanlyOnAnInterrupt(t *testing.T) {
 
 	done := make(chan int, 1)
 	go func() { done <- p.run("send", "--no-console") }()
-	time.Sleep(500 * time.Millisecond)
+
+	// The signal must not arrive before the run is listening for it, or it
+	// takes the whole test binary down. The settings record is written after
+	// the handler is in place, so it is the cue.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if b, _ := os.ReadFile(logFile); strings.Contains(string(b), `"msg":"starting"`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the run never started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 	self, err := os.FindProcess(os.Getpid())
 	if err != nil {
 		t.Fatal(err)
