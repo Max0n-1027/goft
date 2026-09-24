@@ -1,6 +1,7 @@
 package fsys
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kevinburke/ssh_config"
+	"golang.org/x/crypto/ssh"
 
 	"goft/internal/config"
 )
@@ -182,35 +184,76 @@ func resolveUser(res *Resolved, look sshLookup) {
 //
 // Identity files are filtered by existence, because ssh_config commonly names
 // several and only some of them are on any given machine.
+//
+// A key the job file names is always offered, so that failing to unlock it is
+// reported rather than worked around. Keys from ssh_config or the default
+// locations were not asked for by this job, so only those usable as they stand
+// are offered, and the rest are skipped with a warning. Without that, a job
+// authenticating by password could not connect from any account whose own
+// ~/.ssh/id_ed25519 carries a passphrase, which is most accounts a person uses.
 func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
-	switch keys := look.all("IdentityFile"); {
-	case r.PrivateKey != "":
+	if r.PrivateKey != "" {
 		res.KeyFiles = []string{expandTokens(r.PrivateKey, res.Host, res.User, home)}
 		res.record("private_key", res.KeyFiles[0], SourceYAML)
 		return
-	case len(keys) > 0:
-		for _, k := range keys {
-			if p := expandTokens(k, res.Host, res.User, home); exists(p) {
-				res.KeyFiles = append(res.KeyFiles, p)
-			}
+	}
+
+	var candidates []string
+	source := SourceSSHConfig
+	for _, k := range look.all("IdentityFile") {
+		if p := expandTokens(k, res.Host, res.User, home); exists(p) {
+			candidates = append(candidates, p)
 		}
-		if len(res.KeyFiles) > 0 {
-			res.record("private_key", strings.Join(res.KeyFiles, ", "), SourceSSHConfig)
-			return
+	}
+	if len(candidates) == 0 && home != "" {
+		source = SourceDefault
+		for _, name := range []string{"id_ed25519", "id_rsa"} {
+			if p := filepath.Join(home, ".ssh", name); exists(p) {
+				candidates = append(candidates, p)
+			}
 		}
 	}
 
-	if home == "" {
-		return
-	}
-	for _, name := range []string{"id_ed25519", "id_rsa"} {
-		if p := filepath.Join(home, ".ssh", name); exists(p) {
-			res.KeyFiles = append(res.KeyFiles, p)
+	for _, p := range candidates {
+		if why := unusableKey(p, res.Passphrase); why != "" {
+			res.Warnings = append(res.Warnings, fmt.Sprintf("skipping the key %s: %s", p, why))
+			continue
 		}
+		res.KeyFiles = append(res.KeyFiles, p)
 	}
 	if len(res.KeyFiles) > 0 {
-		res.record("private_key", strings.Join(res.KeyFiles, ", "), SourceDefault)
+		res.record("private_key", strings.Join(res.KeyFiles, ", "), source)
 	}
+}
+
+// unusableKey says why a key file cannot be used as things stand, or returns
+// an empty string when it can.
+func unusableKey(path string, passphrase config.Secret) string {
+	pem, err := os.ReadFile(path)
+	if err != nil {
+		return err.Error()
+	}
+	_, err = parseKey(pem, passphrase)
+	var locked *ssh.PassphraseMissingError
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &locked):
+		return "it is passphrase protected and private_key_passphrase is not set"
+	default:
+		return err.Error()
+	}
+}
+
+// parseKey reads a private key, using the passphrase only if the key asks for
+// one. A passphrase given for one key must not break another that has none.
+func parseKey(pem []byte, passphrase config.Secret) (ssh.Signer, error) {
+	signer, err := ssh.ParsePrivateKey(pem)
+	var locked *ssh.PassphraseMissingError
+	if errors.As(err, &locked) && passphrase.IsSet() {
+		return ssh.ParsePrivateKeyWithPassphrase(pem, []byte(string(passphrase)))
+	}
+	return signer, err
 }
 
 func resolveKnownHosts(res *Resolved, r config.Remote, look sshLookup, home string) {

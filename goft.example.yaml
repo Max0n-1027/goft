@@ -31,8 +31,11 @@ remote:
   # wins.
   # port: 22
   # user: uploader
-  # private_key: ~/.ssh/id_ed25519
+  # private_key: ~/.ssh/id_ed25519            # always offered; failing to unlock it is an error
   # private_key_passphrase: ${GOFT_SSH_PASSPHRASE}
+  # Keys found without being named here (ssh_config's IdentityFile, or
+  # ~/.ssh/id_ed25519 and id_rsa) are skipped with a warning when they need a
+  # passphrase that is not given, so they never block password authentication.
   # password: ${GOFT_SFTP_PASSWORD}
   # known_hosts: ~/.ssh/known_hosts
   # insecure_skip_host_key_check: false

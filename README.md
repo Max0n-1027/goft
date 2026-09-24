@@ -112,6 +112,14 @@ settings you need directly in the job file instead. ssh-agent is not used;
 supply the key with `private_key`, and its passphrase with
 `private_key_passphrase` if it has one.
 
+Keys goft finds for itself — `IdentityFile` in ssh_config, or
+`~/.ssh/id_ed25519` and `~/.ssh/id_rsa` — are offered only when they can be
+used as they stand. One that is passphrase protected while no
+`private_key_passphrase` is set is skipped with a warning, so the passphrase on
+a person's own key does not stand in the way of a job that authenticates by
+password. A key named by `private_key` is always offered, and failing to unlock
+it is an error.
+
 `StrictHostKeyChecking` in ssh_config is honoured, with a warning either way.
 `no` turns host key verification off. `accept-new` behaves as it does for
 OpenSSH: the key of a host that known_hosts does not list yet is accepted and

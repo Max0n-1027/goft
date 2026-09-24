@@ -89,12 +89,7 @@ func sftpAuths(res *Resolved) ([]ssh.AuthMethod, error) {
 			// another key or a password may still work.
 			continue
 		}
-		var signer ssh.Signer
-		if res.Passphrase.IsSet() {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(pem, []byte(string(res.Passphrase)))
-		} else {
-			signer, err = ssh.ParsePrivateKey(pem)
-		}
+		signer, err := parseKey(pem, res.Passphrase)
 		if err != nil {
 			return nil, fmt.Errorf("parse private key %s: %w", keyPath, err)
 		}
