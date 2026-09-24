@@ -18,11 +18,11 @@ same settings can drive an upload or a download.
 	post_action: move
 	move_to: /data/done/invoice
 
-[Load] reads a file, expands any ${VAR} from the environment and fills in the
-defaults. [Validate] then reports everything wrong with it at once, and
+[Load] reads a file, replaces ${NAME} in its values from the environment and
+fills in the defaults. [Validate] then reports everything wrong with it at once, and
 [ValidateForDirection] adds the checks that only make sense once the command is
-known. Credentials for ftp and sftp are deliberately not checked here, because
-~/.netrc and ~/.ssh/config may still supply them.
+known. Credentials are deliberately not checked here, because the Windows
+Credential Manager, ~/.netrc or ~/.ssh/config may still supply them.
 
 goft.example.yaml documents every setting in full.
 */
@@ -148,6 +148,33 @@ type Remote struct {
 	// Share is the smb share to mount, and Domain the NTLM domain.
 	Share  string `mapstructure:"share"`
 	Domain string `mapstructure:"domain"`
+
+	// ConnectTimeout bounds how long opening a connection may take, from the
+	// TCP connection through the handshake and login to mounting the share. A
+	// server that accepts the connection and then says nothing would otherwise
+	// hold the job there for good.
+	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
+	// IOTimeout is how long an open connection may go without moving any data
+	// while something is waiting on it. Past that the connection is dropped and
+	// the file tried again over a new one. It measures silence, not duration,
+	// so a large file that keeps moving is never cut off. Zero turns it off.
+	IOTimeout time.Duration `mapstructure:"io_timeout"`
+}
+
+// Defaults for a connection's timeouts, also used for a Remote built in code
+// rather than loaded, where the fields are simply left at zero.
+const (
+	DefaultConnectTimeout = 30 * time.Second
+	DefaultIOTimeout      = 5 * time.Minute
+)
+
+// ConnectTimeoutOrDefault returns ConnectTimeout, or the default when it was
+// never set.
+func (r Remote) ConnectTimeoutOrDefault() time.Duration {
+	if r.ConnectTimeout > 0 {
+		return r.ConnectTimeout
+	}
+	return DefaultConnectTimeout
 }
 
 // IsLocal reports whether the far side is another directory on this machine.
@@ -305,6 +332,8 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("on_exists", string(OnExistsSkip))
 	v.SetDefault("post_action", string(PostNone))
 	v.SetDefault("remove_empty_dirs", false)
+	v.SetDefault("remote.connect_timeout", DefaultConnectTimeout.String())
+	v.SetDefault("remote.io_timeout", DefaultIOTimeout.String())
 	v.SetDefault("retry.max_attempts", 3)
 	v.SetDefault("retry.interval", "2s")
 	v.SetDefault("retry.backoff", 2.0)
@@ -316,8 +345,9 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("log.compress", true)
 }
 
-// Load reads path, expands ${ENV} references and decodes the result.
-// Validation is performed separately by [Validate].
+// Load reads path, replaces ${NAME} in its values from the environment and
+// decodes the result. A variable that is not set is an error. Validation is
+// performed separately by [Validate].
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -327,8 +357,11 @@ func Load(path string) (*Config, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")
 	defaults(v)
-	if err := v.ReadConfig(bytes.NewReader([]byte(os.ExpandEnv(string(raw))))); err != nil {
+	if err := v.ReadConfig(bytes.NewReader(raw)); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	if err := expandEnv(v); err != nil {
+		return nil, fmt.Errorf("config %s: %w", path, err)
 	}
 
 	var c Config
@@ -346,6 +379,17 @@ func Load(path string) (*Config, error) {
 	if c.Name == "" {
 		base := filepath.Base(path)
 		c.Name = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+
+	// Paths on this machine are resolved once, here. Every transfer record
+	// names both ends in full, because a path relative to a working directory
+	// nobody remembers identifies nothing when the log is read months later,
+	// and those records are built from these values.
+	c.Local.Path = absPath(c.Local.Path)
+	c.MoveTo = absPath(c.MoveTo)
+	c.Log.Path = absPath(c.Log.Path)
+	if c.Remote.IsLocal() {
+		c.Remote.Path = absPath(c.Remote.Path)
 	}
 	return &c, nil
 }

@@ -66,6 +66,10 @@ The two directories must be separate; goft refuses a configuration where either
 contains the other. See
 [Copying between two local directories](docs/local-copy.md).
 
+Paths on this machine may be relative. They are resolved against the directory
+goft is started from, once, when the configuration is read, and the log records
+them in full.
+
 The direction is chosen by the command, not by the file. That means the same
 file could be used for both `send` and `recv`; keep one file per purpose,
 especially with `post_action: delete`, or a pair of jobs will pass the same
@@ -75,7 +79,11 @@ files back and forth.
 
 Nothing needs to be written in plain text:
 
-- `${VAR}` anywhere in the file is replaced from the environment.
+- `${VAR}` in any value is replaced from the environment. A variable that is not
+  set is an error rather than an empty string, so a forgotten export stops the
+  job at startup instead of surfacing later as a failed login. Only the
+  `${...}` form is recognised: a `$` on its own is an ordinary character, so a
+  password may contain one, and a variable named in a comment is ignored.
 - **sftp** fills in anything you leave out from `~/.ssh/config`, including
   `HostName`, `Port`, `User`, `IdentityFile` and `UserKnownHostsFile`.
 - **ftp** fills in `user` and `password` from `~/.netrc`, or
@@ -106,11 +114,35 @@ Nothing needs to be written in plain text:
 What the configuration file states always wins over a default file. Run
 `goft test` to see the values that were resolved and where each one came from.
 
-Two ssh_config features are not supported, and are reported as warnings rather
-than applied silently: `Match` blocks, and `ProxyJump`/`ProxyCommand`. Put the
-settings you need directly in the job file instead. ssh-agent is not used;
+`Match host` and `Match all` in ssh_config are understood. Any other `Match`
+criterion makes the parser reject the whole file, and a default file it rejects
+is skipped with a warning — none of its settings apply, while the other default
+file still does; a file named by `ssh_config_file` is an error instead.
+`ProxyJump` and `ProxyCommand` are not supported, and are reported as warnings
+rather than applied silently. Put the settings you need directly in the job file
+instead. ssh-agent is not used;
 supply the key with `private_key`, and its passphrase with
 `private_key_passphrase` if it has one.
+
+Keys goft finds for itself — `IdentityFile` in ssh_config, or
+`~/.ssh/id_ed25519` and `~/.ssh/id_rsa` — are offered only when they can be
+used as they stand. One that is passphrase protected while no
+`private_key_passphrase` is set is skipped with a warning, so the passphrase on
+a person's own key does not stand in the way of a job that authenticates by
+password. A key named by `private_key` is always offered, and failing to unlock
+it is an error.
+
+`StrictHostKeyChecking` in ssh_config is honoured, with a warning either way.
+`no` turns host key verification off. `accept-new` behaves as it does for
+OpenSSH: the key of a host that known_hosts does not list yet is accepted and
+recorded there — creating the file if need be — while a host that is listed
+with a different key is refused, since that is what a man in the middle looks
+like.
+
+For a host known_hosts lists, goft negotiates only the kinds of host key it
+holds for that host, as OpenSSH does. A known_hosts with just the host's
+ed25519 key — what `ssh` often leaves behind — is therefore enough, even though
+the server also has keys of other kinds.
 
 ### Running several jobs
 
@@ -143,6 +175,15 @@ modification time across cycles rather than trusting the timestamp alone,
 because tools that preserve timestamps (`cp -p`, `rsync --times`) leave the
 modification time at the source file's old value while the copy is still
 running.
+
+**A file that changes during its transfer is neither published nor removed.**
+Settling can be fooled by a writer that pauses for longer than
+`stable_duration` and then carries on. So the bytes read are also checked
+against the size the file settled at, and nothing is published under the real
+name if they differ. When `post_action` would delete or move the source, the
+source is looked at once more just before, and one that has changed since it
+was sent is left where it is. Either way the file is recorded as failed, is not
+retried at once, and the next cycle's settling decides when to try again.
 
 **FTP timestamps are coarse.** FTP has no stat command; the modification time
 comes from `MLST` where the server supports it and from a directory listing
@@ -213,11 +254,36 @@ transfer looks like a success. A trailing dot or space is the same story:
 Windows drops it, and the file arrives under a name that is not the one the
 server used. So are the reserved device names (`con`, `nul`, `aux`, `com1` and
 the rest), which ordinary Win32 path resolution cannot reach afterwards.
-Because none of this can be caught after the fact, `recv` onto Windows refuses
-such a name before writing anything, records the file as failed and says what
+Because none of this can be caught after the fact, writing onto a Windows disk
+— `recv`, or `send` with `protocol: local` — refuses such a name before writing
+anything, records the file as failed and says what
 about the name was the problem. It is not retried, since the name would be
 refused identically next time. The rest of the cycle carries on, and every name
 Windows can hold as written is transferred as before.
+
+**Names that differ only in case are not merged.** A Windows or macOS disk or
+an SMB share cannot hold `A.csv` and `a.csv` side by side, while a Linux source
+can. When one cycle finds both, neither is sent and both are recorded as
+failed: sending them would keep only one, report both as delivered, and with
+`post_action: delete` remove both sources.
+
+**A connection that goes quiet is given up on.** Opening one — the TCP
+connection, the handshake, the login and, for SMB, mounting the share — has to
+finish within `remote.connect_timeout` (30 seconds by default). Once open, a
+connection that moves no data for `remote.io_timeout` (5 minutes) while
+something is waiting on it is dropped, and the file is tried again over a new
+one. That measures silence, not duration: a large file that keeps moving is
+never cut off, and nor is a connection that is merely idle between files.
+Without these, a server that accepted the connection and then hung held a
+watching job there for good, since cycles run one at a time.
+
+**Stopping finishes what is under way.** Ctrl+C or SIGTERM stops the run from
+starting anything new, while a file already being transferred is finished — a
+stop never leaves more than a `.goft.tmp` behind, and usually not even that.
+One that has stalled is dropped after `remote.io_timeout`, which bounds how
+long a stop can take. The cycle's summary is still written, as `cycle
+interrupted` with the number of files not started; `serve` then exits 0, and
+`send` or `recv` exit 2, since the run did not finish.
 
 **A watching job that keeps failing goes quiet rather than loud.** When a whole
 cycle cannot run — an unreachable server, say — the pause before the next one
@@ -235,7 +301,9 @@ turns it off.
 
 Post-processing is the exception: if the file arrived but `post_action` failed,
 only the post-processing is tried again. Re-sending a file that is already
-there would achieve nothing.
+there would achieve nothing. The same rules decide whether that is worth
+another go, so a name already taken under `move_to` is reported at once rather
+than retried.
 
 **`on_exists: overwrite` avoids pointless transfers.** Before overwriting,
 goft compares the existing file using the configured `verify` method and skips
@@ -291,7 +359,7 @@ GOFT_WINCRED_TEST=1 go test -count=1 ./internal/fsys/ -run Credential -v
 |---|---|
 | 0 | Finished normally, including `serve` stopping on a signal |
 | 1 | The run completed but at least one file failed |
-| 2 | The run could not be completed: bad configuration, or the connection failed |
+| 2 | The run could not be completed: bad configuration, the connection failed, or it was stopped before it finished |
 
 `goft test` is the exception to the last row: it reports both directions and
 only fails when neither of them works, because a read-only account is a perfectly
@@ -429,8 +497,8 @@ Each archive holds the binary, both READMEs, the licence and the example
 configuration, and `SHA256SUMS` covers them all:
 
 ```bash
-tar xzf goft_v0.1.0_linux_amd64.tar.gz
-sudo install goft_v0.1.0_linux_amd64/goft /usr/local/bin/
+tar xzf goft_v0.2.0_linux_amd64.tar.gz
+sudo install goft_v0.2.0_linux_amd64/goft /usr/local/bin/
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 

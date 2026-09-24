@@ -178,3 +178,16 @@ func TestFTPRequiresCredentials(t *testing.T) {
 }
 
 func bytesReader(b []byte) *strings.Reader { return strings.NewReader(string(b)) }
+
+func TestFTPMkdirAllAcceptsLevelsThatAlreadyExist(t *testing.T) {
+	f, root := dialFTP(t)
+	if err := os.MkdirAll(filepath.Join(root, "a", "b"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.MkdirAll(context.Background(), "a/b/c"); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	if fi, err := os.Stat(filepath.Join(root, "a", "b", "c")); err != nil || !fi.IsDir() {
+		t.Errorf("a/b/c was not created: %v", err)
+	}
+}

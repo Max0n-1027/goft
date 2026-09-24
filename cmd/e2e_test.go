@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"goft/internal/config"
+	"goft/internal/nettest"
 	"goft/internal/sftptest"
 )
 
@@ -437,5 +439,72 @@ func TestRecvRemovesTheRemoteDirectoryItEmptied(t *testing.T) {
 	}
 	if exists(t, filepath.Join(s.remoteDir, "2026-08")) {
 		t.Error("the emptied directory should have been removed from the server")
+	}
+}
+
+func TestAStalledTransferIsRetriedOverANewConnection(t *testing.T) {
+	// The first connection goes silent part way through the file. The job
+	// should neither wait on it for ever nor give the file up: io_timeout
+	// drops it, and the retry sends the file again over a new connection.
+	localDir, remoteDir := t.TempDir(), t.TempDir()
+	server := sftptest.Start(t, remoteDir)
+	proxy := nettest.Start(t, fmt.Sprintf("%s:%d", server.Host, server.Port), 1<<20)
+
+	logFile := filepath.Join(t.TempDir(), "goft.log")
+	cfg := filepath.Join(t.TempDir(), "job.yaml")
+	body := fmt.Sprintf(`
+local:
+  path: %s
+remote:
+  protocol: sftp
+  host: %s
+  port: %d
+  user: %s
+  password: %s
+  path: %s
+  use_ssh_config: false
+  insecure_skip_host_key_check: true
+  io_timeout: 500ms
+stable_duration: 0s
+retry:
+  max_attempts: 3
+  interval: 0s
+log:
+  path: %s
+`, localDir, proxy.Host, proxy.Port, server.User, string(server.Password), remoteDir, logFile)
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	payload := strings.Repeat("0123456789abcdef", 1<<18) // 4 MiB
+	if err := os.WriteFile(filepath.Join(localDir, "big.dat"), []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan int, 1)
+	go func() {
+		resetFlags()
+		rootCmd.SetArgs([]string{"send", "-c", cfg, "--no-console"})
+		done <- Execute()
+	}()
+	select {
+	case code := <-done:
+		if code != 0 {
+			b, _ := os.ReadFile(logFile)
+			t.Fatalf("exit code = %d, want 0\n%s", code, b)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("still waiting on a stalled connection after 30s")
+	}
+
+	got, err := os.ReadFile(filepath.Join(remoteDir, "big.dat"))
+	if err != nil || string(got) != payload {
+		t.Fatalf("the file did not arrive intact (%d bytes, %v)", len(got), err)
+	}
+	b, _ := os.ReadFile(logFile)
+	if !strings.Contains(string(b), "retrying transfer") || !strings.Contains(string(b), "stalled") {
+		t.Errorf("the log should show the stall and the retry:\n%s", b)
+	}
+	if proxy.Connections() < 2 {
+		t.Errorf("%d connections, want a new one for the retry", proxy.Connections())
 	}
 }

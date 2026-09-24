@@ -2,8 +2,11 @@ package fsys
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"time"
 
 	"goft/internal/config"
 )
@@ -12,14 +15,34 @@ import (
 //
 // Each call returns an independent connection: the engine gives every worker
 // its own, which is why the live connection count never exceeds workers.
+//
+// A connection that stops moving data for remote.io_timeout is dropped, so that
+// a call waiting on it returns with [ErrStalled] rather than never.
 func NewRemote(ctx context.Context, r config.Remote) (FS, error) {
+	var (
+		fs  FS
+		err error
+	)
 	switch r.Protocol {
 	case config.ProtocolSFTP:
-		return newSFTP(ctx, r)
+		fs, err = newSFTP(ctx, r)
 	case config.ProtocolFTP:
-		return newFTP(ctx, r)
+		fs, err = newFTP(ctx, r)
 	case config.ProtocolSMB:
-		return newSMB(ctx, r)
+		fs, err = newSMB(ctx, r)
+	default:
+		return newNonNetwork(r)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return guard(fs, r.IOTimeout), nil
+}
+
+// newNonNetwork opens what is not reached over a connection, which is also
+// nothing a stall could be caught on.
+func newNonNetwork(r config.Remote) (FS, error) {
+	switch r.Protocol {
 	case config.ProtocolLocal:
 		// Nothing is opened: the far side is a directory on this machine, and
 		// the engine cannot tell the difference.
@@ -36,7 +59,8 @@ type Resolution struct {
 	Field string
 	// Value is what it ended up as, with any secret already masked.
 	Value string
-	// Source is where it came from: yaml, ssh_config, netrc or default.
+	// Source is where it came from: yaml, ssh_config, netrc,
+	// credential_manager or default.
 	Source string
 }
 
@@ -48,7 +72,8 @@ const (
 	SourceDefault   = "default"
 )
 
-// Resolved is the outcome of merging YAML with ssh_config or netrc.
+// Resolved is the outcome of merging the job configuration with whatever the
+// protocol consults besides: ssh_config, netrc or the Credential Manager.
 type Resolved struct {
 	// Host is the name to connect to, which for an sftp alias is the HostName
 	// from ssh_config rather than the alias itself.
@@ -63,6 +88,10 @@ type Resolved struct {
 	// KnownHosts verifies the host key unless SkipHostKey is set.
 	KnownHosts  string
 	SkipHostKey bool
+	// AcceptNewHostKeys trusts and records the key of a host KnownHosts does
+	// not list yet, while still refusing a host whose key has changed. It is
+	// what ssh_config's StrictHostKeyChecking accept-new asks for.
+	AcceptNewHostKeys bool
 	// Trace records where each value above came from, which is what goft test
 	// prints and the debug log records.
 	Trace []Resolution
@@ -87,6 +116,20 @@ func Resolve(r config.Remote) (*Resolved, error) {
 	default:
 		return nil, fmt.Errorf("unsupported protocol %q", r.Protocol)
 	}
+}
+
+// connectErr says plainly that a connection ran out of time, rather than
+// leaving the operator to read "i/o timeout" off whichever read happened to be
+// waiting when the deadline passed.
+//
+// Whether it did is judged by the clock as well as by the error: not every
+// library keeps the deadline error it was handed — go-smb2 turns it into text —
+// and a failure at or after the deadline is the deadline's doing either way.
+func connectErr(err error, timeout time.Duration, deadline time.Time) error {
+	if errors.Is(err, os.ErrDeadlineExceeded) || !time.Now().Before(deadline) {
+		return fmt.Errorf("no usable connection within connect_timeout %v: %w", timeout, err)
+	}
+	return err
 }
 
 // resolveLocal reports the far side of a local copy. There is nothing to look

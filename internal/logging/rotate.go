@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -20,6 +21,14 @@ import (
 const (
 	layoutDaily   = "2006-01-02"
 	layoutMonthly = "2006-01"
+)
+
+// Patterns matching what the layouts above produce, and the timestamp
+// lumberjack appends to a backup it rotated out for size.
+const (
+	stampDaily   = `\d{4}-\d{2}-\d{2}`
+	stampMonthly = `\d{4}-\d{2}`
+	stampBackup  = `\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.\d{3}`
 )
 
 // newRotatingWriter returns the writer backing the log file.
@@ -43,20 +52,36 @@ func newRotatingWriter(cfg config.Log, now func() time.Time) io.WriteCloser {
 		return lj(cfg.Path)
 	}
 
-	layout := layoutDaily
+	layout, stamp := layoutDaily, stampDaily
 	if cfg.Rotation == config.RotationMonthly {
-		layout = layoutMonthly
+		layout, stamp = layoutMonthly, stampMonthly
 	}
 	ext := filepath.Ext(cfg.Path)
+	base := strings.TrimSuffix(filepath.Base(cfg.Path), ext)
 	return &dateWriter{
-		dir:    filepath.Dir(cfg.Path),
-		base:   strings.TrimSuffix(filepath.Base(cfg.Path), ext),
-		ext:    ext,
-		layout: layout,
-		cfg:    cfg,
-		now:    now,
-		new:    lj,
+		dir:        filepath.Dir(cfg.Path),
+		base:       base,
+		ext:        ext,
+		layout:     layout,
+		generation: generationPattern(base, ext, stamp),
+		cfg:        cfg,
+		now:        now,
+		new:        lj,
 	}
+}
+
+// generationPattern matches the files one dated log produces: the dated file
+// itself, and the backups lumberjack rotates out of it for size, compressed or
+// not.
+//
+// Matching on the base name as a prefix is not enough. Jobs commonly share a
+// log directory, and one job's name can be the start of another's — invoice
+// and invoice-archive — so a prefix match had the first job pruning the second
+// one's logs as its own old generations. What follows the base name has to be
+// a date in this writer's own layout.
+func generationPattern(base, ext, stamp string) *regexp.Regexp {
+	return regexp.MustCompile(`^` + regexp.QuoteMeta(base) + `-` + stamp +
+		`(-` + stampBackup + `)?` + regexp.QuoteMeta(ext) + `(\.gz)?$`)
 }
 
 // dateWriter splits the log by calendar date on top of lumberjack's size based
@@ -68,9 +93,12 @@ type dateWriter struct {
 	base   string
 	ext    string
 	layout string
-	cfg    config.Log
-	now    func() time.Time
-	new    func(name string) *lumberjack.Logger
+	// generation recognises this writer's own files among everything else in
+	// the directory, which is what pruning is allowed to touch.
+	generation *regexp.Regexp
+	cfg        config.Log
+	now        func() time.Time
+	new        func(name string) *lumberjack.Logger
 
 	mu    sync.Mutex
 	stamp string
@@ -115,7 +143,6 @@ func (w *dateWriter) prune() {
 		return
 	}
 	active := w.base + "-" + w.stamp + w.ext
-	prefix := w.base + "-"
 
 	type candidate struct {
 		path string
@@ -127,12 +154,7 @@ func (w *dateWriter) prune() {
 			continue
 		}
 		name := e.Name()
-		if name == active || !strings.HasPrefix(name, prefix) {
-			continue
-		}
-		// Both "<base>-<stamp>.log" and lumberjack's own backups derived from
-		// it, compressed or not.
-		if !strings.HasSuffix(name, w.ext) && !strings.HasSuffix(name, w.ext+".gz") {
+		if name == active || !w.generation.MatchString(name) {
 			continue
 		}
 		info, err := e.Info()

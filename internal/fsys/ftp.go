@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	goftp "github.com/jlaffaye/ftp"
@@ -21,6 +22,10 @@ type ftpFS struct {
 	root string
 	desc string
 	conn *goftp.ServerConn
+	// open holds the control connection and any data connection in use, so
+	// that abort can drop all of them: a stalled transfer is waiting on a data
+	// connection, not on the control one.
+	open *connSet
 }
 
 func newFTP(ctx context.Context, r config.Remote) (FS, error) {
@@ -33,25 +38,51 @@ func newFTP(ctx context.Context, r config.Remote) (FS, error) {
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
-	conn, err := goftp.Dial(addr,
-		goftp.DialWithContext(ctx),
-		goftp.DialWithTimeout(30*time.Second),
-	)
+	timeout := r.ConnectTimeoutOrDefault()
+	deadline := time.Now().Add(timeout)
+
+	// The library dials the control connection and every data connection
+	// through this, the control connection first. That one shares a deadline
+	// with the greeting and the login, lifted once logged in: they would
+	// otherwise wait for as long as a wedged server cared to say nothing. A
+	// data connection only has connect_timeout to be established, since what
+	// it then carries may rightly take hours.
+	open := &connSet{}
+	var control net.Conn
+	dial := func(network, address string) (net.Conn, error) {
+		if control != nil {
+			c, err := (&net.Dialer{Timeout: timeout}).Dial(network, address)
+			if err != nil {
+				return nil, err
+			}
+			return open.add(c), nil
+		}
+		c, err := (&net.Dialer{Deadline: deadline}).DialContext(ctx, network, address)
+		if err != nil {
+			return nil, err
+		}
+		_ = c.SetDeadline(deadline)
+		control = open.add(c)
+		return control, nil
+	}
+	conn, err := goftp.Dial(addr, goftp.DialWithDialFunc(dial))
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, err)
+		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	// Login negotiates features and switches the connection to binary mode
 	// (TYPE I). That matters: in ASCII mode the server rewrites line endings,
 	// so sizes and hashes would never match.
 	if err := conn.Login(res.User, string(res.Password)); err != nil {
 		_ = conn.Quit()
-		return nil, fmt.Errorf("ftp login as %s on %s: %w", res.User, addr, err)
+		return nil, fmt.Errorf("ftp login as %s on %s: %w", res.User, addr, connectErr(err, timeout, deadline))
 	}
+	_ = control.SetDeadline(time.Time{})
 
 	return &ftpFS{
 		root: r.Path,
 		desc: fmt.Sprintf("ftp://%s%s", addr, r.Path),
 		conn: conn,
+		open: open,
 	}, nil
 }
 
@@ -175,22 +206,46 @@ func (f *ftpFS) Write(_ context.Context, name string, r io.Reader) (int64, error
 }
 
 // MkdirAll implements FS. FTP only creates one directory at a time, and
-// reports an error when it already exists, so each level is attempted in turn
-// and existing levels are tolerated.
-func (f *ftpFS) MkdirAll(ctx context.Context, dir string) error {
-	if dir == "" {
+// reports an error when it already exists.
+//
+// The root is included. goft test tells the operator a missing destination
+// will be created on the first transfer, and walking only the levels below the
+// root made that untrue: every file failed, and with vsftpd hiding the reason
+// behind "553 Could not create file".
+//
+// Whether a level MKD refused is in fact there is decided by dirExists, not by
+// listing it. A listing proves nothing on vsftpd, which answers LIST of a path
+// that does not exist with an empty listing, and elsewhere a listing of a file
+// succeeds too; either way MKD's real reason for refusing was dropped.
+func (f *ftpFS) MkdirAll(_ context.Context, dir string) error {
+	return f.mkdirAll(f.abs(dir))
+}
+
+// mkdirAll creates abs, and its parents only if MKD says they are missing, so
+// that the usual case — a new directory in one that exists — costs one round
+// trip rather than one per level of the path.
+func (f *ftpFS) mkdirAll(abs string) error {
+	err := f.conn.MakeDir(abs)
+	if err == nil || f.isDir(abs) {
 		return nil
 	}
-	var built string
-	for _, part := range Segments(dir) {
-		built = path.Join(built, part)
-		if err := f.conn.MakeDir(f.abs(built)); err != nil {
-			if _, statErr := f.conn.List(f.abs(built)); statErr != nil {
-				return translateFTPError(err)
-			}
-		}
+	parent := path.Dir(abs)
+	if parent == abs || parent == "." || parent == "/" {
+		return translateFTPError(err)
+	}
+	if perr := f.mkdirAll(parent); perr != nil {
+		return perr
+	}
+	if err := f.conn.MakeDir(abs); err != nil && !f.isDir(abs) {
+		return translateFTPError(err)
 	}
 	return nil
+}
+
+// isDir reports whether abs is known to be a directory.
+func (f *ftpFS) isDir(abs string) bool {
+	exists, err := f.dirExists(abs)
+	return err == nil && exists
 }
 
 // Rename implements FS.
@@ -214,8 +269,53 @@ func (f *ftpFS) Remove(_ context.Context, name string) error {
 	return translateFTPError(err)
 }
 
+// abort drops every connection under whatever is waiting on one.
+func (f *ftpFS) abort() { f.open.closeAll() }
+
 // Close implements FS.
 func (f *ftpFS) Close() error { return f.conn.Quit() }
+
+// connSet keeps track of the connections that are open, forgetting each as it
+// closes so that a long-lived FTP session does not collect one per transfer.
+type connSet struct {
+	mu    sync.Mutex
+	conns map[*setConn]struct{}
+}
+
+type setConn struct {
+	net.Conn
+	set *connSet
+}
+
+func (c *setConn) Close() error {
+	c.set.mu.Lock()
+	delete(c.set.conns, c)
+	c.set.mu.Unlock()
+	return c.Conn.Close()
+}
+
+func (s *connSet) add(c net.Conn) net.Conn {
+	sc := &setConn{Conn: c, set: s}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.conns == nil {
+		s.conns = map[*setConn]struct{}{}
+	}
+	s.conns[sc] = struct{}{}
+	return sc
+}
+
+func (s *connSet) closeAll() {
+	s.mu.Lock()
+	conns := make([]*setConn, 0, len(s.conns))
+	for c := range s.conns {
+		conns = append(conns, c)
+	}
+	s.mu.Unlock()
+	for _, c := range conns {
+		_ = c.Close()
+	}
+}
 
 // countingReader records how many bytes were handed to the server, since Stor
 // does not report it.

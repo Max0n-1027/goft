@@ -278,3 +278,58 @@ func TestCycleErrorShowsWhatTheCycleHadFound(t *testing.T) {
 		t.Errorf("output = %q, want the failure", out)
 	}
 }
+
+func TestDebugShowsARateOnlyForAFileThatMoved(t *testing.T) {
+	// A file skipped as identical still carries its digests, which debug shows,
+	// but nothing was sent: its bytes are the size of a file that stayed put and
+	// its time is how long the comparison took, so a rate made of the two
+	// describes nothing. The log stopped writing one; the console did not.
+	sent := engine.Result{Index: 1, Total: 2, Path: "a.csv", Bytes: 2 << 20,
+		Elapsed: time.Second, Outcome: engine.Success, Hashed: true, DstHash: 0xabc}
+	identical := engine.Result{Index: 2, Total: 2, Path: "b.csv", Bytes: 2 << 20,
+		Elapsed: time.Millisecond, Outcome: engine.Skipped, Reason: engine.ReasonIdentical,
+		Hashed: true, DstHash: 0xabc}
+
+	var buf bytes.Buffer
+	c := newTestConsole(&buf, slog.LevelDebug, config.DirSend)
+	c.Result(sent)
+	c.Result(identical)
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("output = %q, want two lines", buf.String())
+	}
+	if !strings.Contains(lines[0], "MiB/s") {
+		t.Errorf("transferred: %q, want a rate", lines[0])
+	}
+	if strings.Contains(lines[1], "MiB/s") {
+		t.Errorf("identical: %q, want no rate for a file that was not sent", lines[1])
+	}
+	if !strings.Contains(lines[1], "0000000000000abc") {
+		t.Errorf("identical: %q, want the digest still shown", lines[1])
+	}
+}
+
+func TestAnInterruptedCycleSaysSo(t *testing.T) {
+	var buf bytes.Buffer
+	c := newTestConsole(&buf, slog.LevelInfo, config.DirSend)
+	c.Summary(engine.Summary{Total: 1, Succeeded: 1, Bytes: 3, Interrupted: true, NotStarted: 2})
+
+	out := buf.String()
+	for _, want := range []string{"3 files", "1 transferred", "2 not started", "interrupted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("summary = %q, want it to mention %q", out, want)
+		}
+	}
+}
+
+func TestAWatchingRunShowsAnInterruptedCycle(t *testing.T) {
+	// Being stopped part way is worth seeing even when nothing had moved yet.
+	var buf bytes.Buffer
+	c := New(Options{Writer: &buf, Level: slog.LevelInfo, Job: "invoice", Buffered: true})
+	c.Plan(engine.Plan{Files: []scan.File{{Path: "a.csv"}}})
+	c.Summary(engine.Summary{Interrupted: true, NotStarted: 1})
+	if !strings.Contains(buf.String(), "interrupted") {
+		t.Errorf("output = %q, want the interrupted cycle shown", buf.String())
+	}
+}

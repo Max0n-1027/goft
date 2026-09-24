@@ -20,19 +20,23 @@ func addDryRun(c *cobra.Command) *cobra.Command {
 
 var sendCmd = addDryRun(&cobra.Command{
 	Use:   "send",
-	Short: "Transfer from the local directory to the remote server once",
+	Short: "Transfer from the local directory to the other side once",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runOnce(cmd.Context(), config.DirSend, flagDryRun)
+		ctx, stop := signalContext(cmd.Context())
+		defer stop()
+		return runOnce(ctx, config.DirSend, flagDryRun)
 	},
 })
 
 var recvCmd = addDryRun(&cobra.Command{
 	Use:   "recv",
-	Short: "Transfer from the remote server to the local directory once",
+	Short: "Transfer from the other side to the local directory once",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runOnce(cmd.Context(), config.DirRecv, flagDryRun)
+		ctx, stop := signalContext(cmd.Context())
+		defer stop()
+		return runOnce(ctx, config.DirRecv, flagDryRun)
 	},
 })
 
@@ -49,7 +53,7 @@ var serveCmd = &cobra.Command{
 
 var serveSendCmd = addDryRun(&cobra.Command{
 	Use:   "send",
-	Short: "Watch the local directory and transfer to the remote server",
+	Short: "Watch the local directory and transfer to the other side",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())
@@ -60,7 +64,7 @@ var serveSendCmd = addDryRun(&cobra.Command{
 
 var serveRecvCmd = addDryRun(&cobra.Command{
 	Use:   "recv",
-	Short: "Watch the remote server and transfer to the local directory",
+	Short: "Watch the other side and transfer to the local directory",
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())
@@ -70,6 +74,11 @@ var serveRecvCmd = addDryRun(&cobra.Command{
 })
 
 // signalContext cancels on Ctrl+C and on SIGTERM.
+//
+// Cancelling stops the run from starting anything new; a file already under
+// way is finished, so that a stop never leaves more than a temporary file
+// behind. One that has stalled is dropped after remote.io_timeout, which bounds
+// how long a stop can take.
 //
 // syscall.SIGTERM is defined on Windows as well, so this compiles everywhere
 // even though only os.Interrupt is ever delivered there.

@@ -3,7 +3,9 @@
 package sftptest
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
+	"crypto/elliptic"
 	"crypto/rand"
 	"errors"
 	"fmt"
@@ -22,6 +24,12 @@ import (
 // Start runs a real SSH server with the sftp subsystem on localhost,
 // so the client implementation is exercised end to end rather than mocked.
 // It returns the remote configuration needed to reach it.
+//
+// Like a stock OpenSSH server it has more than one host key, ECDSA as well as
+// ed25519, and like the known_hosts OpenSSH leaves behind, the one it returns
+// lists only the ed25519 key. A client negotiating whichever algorithm it
+// happens to prefer rather than one known_hosts can vouch for fails against
+// this server exactly as it would against a real one.
 func Start(t *testing.T, root string) config.Remote {
 	t.Helper()
 
@@ -30,6 +38,14 @@ func Start(t *testing.T, root string) config.Remote {
 		t.Fatal(err)
 	}
 	signer, err := ssh.NewSignerFromKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecdsaPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ecdsaSigner, err := ssh.NewSignerFromKey(ecdsaPriv)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +59,7 @@ func Start(t *testing.T, root string) config.Remote {
 		},
 	}
 	srvCfg.AddHostKey(signer)
+	srvCfg.AddHostKey(ecdsaSigner)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

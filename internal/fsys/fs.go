@@ -28,6 +28,7 @@ package fsys
 
 import (
 	"context"
+	"errors"
 	"io"
 	"path"
 	"strings"
@@ -162,3 +163,8 @@ func HostPathOf(f FS, name string) (string, bool) {
 	}
 	return hp.HostPath(name), true
 }
+
+// ErrStalled reports an operation abandoned because its connection moved no
+// data for remote.io_timeout. The connection is closed to get the waiting call
+// back, so everything else on it fails the same way, at once.
+var ErrStalled = errors.New("the connection stalled")

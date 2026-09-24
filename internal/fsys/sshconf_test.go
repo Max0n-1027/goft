@@ -3,6 +3,7 @@ package fsys
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"goft/internal/config"
@@ -123,5 +124,63 @@ func TestExpandTokens(t *testing.T) {
 	want := "/home/alice/.ssh/example.com_alice"
 	if got != want {
 		t.Errorf("expandTokens() = %q, want %q: the library leaves these alone", got, want)
+	}
+}
+
+func TestAnUnreadableDefaultSSHConfigIsReportedNotIgnored(t *testing.T) {
+	// The parser rejects Match criteria other than host and all. For the
+	// default ~/.ssh/config that error used to be swallowed, and with it every
+	// setting in the file: a job relying on its Port connected to 22 instead,
+	// and nothing said why.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body := "Host invoice\n  Port 2222\n\nMatch user root\n  User someone\n"
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	on := true
+	res, err := resolveSFTP(config.Remote{Protocol: config.ProtocolSFTP, Host: "invoice", Path: "/p", UseSSHConfig: &on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var said bool
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "Match") {
+			said = true
+		}
+	}
+	if !said {
+		t.Errorf("warnings = %v, want the unreadable ssh_config reported", res.Warnings)
+	}
+}
+
+func TestTheDefaultSSHConfigIsFoundInTheHomeDirectory(t *testing.T) {
+	// The same home directory as known_hosts and the default keys, found the
+	// same way — which the library's own search did not do.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	if err := os.MkdirAll(filepath.Join(home, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".ssh", "config"), []byte("Host invoice\n  Port 2222\n  User uploader\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	on := true
+	res, err := resolveSFTP(config.Remote{Protocol: config.ProtocolSFTP, Host: "invoice", Path: "/p", UseSSHConfig: &on})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Port != 2222 || res.User != "uploader" {
+		t.Errorf("port=%d user=%q, want both from ~/.ssh/config", res.Port, res.User)
+	}
+	if !tracedFrom(res, "port", SourceSSHConfig) {
+		t.Errorf("trace = %+v, want the port attributed to ssh_config", res.Trace)
 	}
 }

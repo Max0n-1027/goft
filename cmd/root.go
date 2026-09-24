@@ -51,7 +51,7 @@ func transferError(n int) error {
 
 var rootCmd = &cobra.Command{
 	Use:           "goft",
-	Short:         "Transfer files between a local directory and an FTP, SFTP or SMB server",
+	Short:         "Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory",
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
@@ -130,7 +130,11 @@ func loadConfig(dir config.Direction) (*config.Config, error) {
 		return nil, fmt.Errorf("invalid configuration %s: %w", path, err)
 	}
 	if flagLogFile != "" {
-		cfg.Log.Path = flagLogFile
+		if abs, err := filepath.Abs(flagLogFile); err == nil {
+			cfg.Log.Path = abs
+		} else {
+			cfg.Log.Path = flagLogFile
+		}
 	}
 	if flagLogLevel != "" {
 		if _, err := config.ParseLevel(flagLogLevel); err != nil {
@@ -180,10 +184,16 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 	if err != nil {
 		return nil, err
 	}
+	j := &job{cfg: cfg, log: log, closeLog: closer}
+
+	// The settings open the log, so that a warning about them is read after
+	// them rather than before.
+	j.logConfiguration()
 	for _, w := range config.Warnings(cfg) {
 		log.Warn(w, logging.KeyEvent, logging.EventLifecycle)
 	}
 	if err := reportResolution(log, cfg.Remote); err != nil {
+		j.close()
 		return nil, err
 	}
 
@@ -197,8 +207,6 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 	if dir == config.DirRecv {
 		newSrc, newDst = newRemote, newLocal
 	}
-
-	j := &job{cfg: cfg, log: log, closeLog: closer}
 
 	opts := engine.Options{
 		Config:    cfg,
@@ -276,9 +284,14 @@ func runOnce(ctx context.Context, dir config.Direction, dryRun bool) error {
 	}
 	defer j.close()
 
-	j.logConfiguration()
 	summary, err := j.engine.RunOnce(ctx)
-	if err != nil {
+	switch {
+	case err != nil && ctx.Err() != nil:
+		// Stopped on request. The files under way were finished; the cycle's
+		// own summary, if it got that far, says what was left.
+		j.log.Warn("interrupted", logging.KeyEvent, logging.EventLifecycle)
+		return startupError(errors.New("interrupted before the run was complete"))
+	case err != nil:
 		j.log.Error("run failed", logging.KeyEvent, logging.EventLifecycle, logging.KeyError, err.Error())
 		return startupError(err)
 	}
@@ -303,7 +316,6 @@ func runServe(ctx context.Context, dir config.Direction, dryRun bool) error {
 	}
 	defer j.close()
 
-	j.logConfiguration()
 	if err := j.engine.Serve(ctx); err != nil {
 		return startupError(err)
 	}

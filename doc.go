@@ -55,8 +55,9 @@ part of the file: it is chosen by the command.
 	post_action: move
 	move_to: /data/done/invoice
 
-Credentials need not be written in plain text. Any ${VAR} in the file is
-replaced from the environment, sftp fills in whatever is left out from
+Credentials need not be written in plain text. Any ${VAR} in a value is
+replaced from the environment, and one that is not set is an error; a $ not
+followed by a brace is an ordinary character. sftp fills in whatever is left out from
 ~/.ssh/config, and ftp does the same from ~/.netrc (%USERPROFILE%\.netrc on
 Windows). On Windows a generic credential registered as goft:<protocol>://<host>
 supplies the user and password for any protocol, and is read before those files:
@@ -90,6 +91,10 @@ log goes to stderr so that the two never mix.
 
 	0  finished normally, including serve stopping on a signal
 	1  the run completed but at least one file failed
-	2  the run could not be completed: bad configuration, or the connection failed
+	2  the run could not be completed: bad configuration, the connection failed,
+	   or it was stopped before it finished
+
+Ctrl+C or SIGTERM stops a run from starting anything new; a file already being
+transferred is finished first.
 */
 package main

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -225,6 +226,27 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		return Summary{}, nil
 	}
 
+	// Files the size cap turns away are reported here, before anything is
+	// opened. They need nothing from the destination, and a file that will
+	// never be sent can sit in the source directory for weeks: a watcher
+	// connecting on every poll just to say so again was pure cost.
+	collector := &Collector{}
+	sendable := make([]target, 0, len(targets))
+	for i, t := range targets {
+		t.index, t.total = i+1, len(targets)
+		if t.overSizeCap {
+			e.report(ctx, collector, Result{
+				Index: t.index, Total: t.total, Path: t.file.Path, Bytes: t.file.Size,
+				Outcome: Skipped, Reason: ReasonSizeLimit, Recurring: t.recurring,
+			})
+			continue
+		}
+		sendable = append(sendable, t)
+	}
+	if len(sendable) == 0 {
+		return e.finishCycle(start, collector.Summary()), nil
+	}
+
 	// The scanning connection becomes worker 0's, so the cycle never holds more
 	// than `workers` connections per side.
 	dst, err := e.opts.NewDst(ctx)
@@ -233,7 +255,7 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	}
 	srcOpen = false
 
-	conns, err := e.openConnections(ctx, src, dst, len(targets))
+	conns, err := e.openConnections(ctx, src, dst, len(sendable))
 	defer func() {
 		for _, c := range conns {
 			c.close()
@@ -243,15 +265,31 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		return Summary{}, err
 	}
 
-	idx, err := buildDestIndex(ctx, dst, targetDirs(targets))
+	idx, err := buildDestIndex(ctx, dst, targetDirs(sendable))
 	if err != nil {
 		return Summary{}, err
 	}
+	if idx.caseInsensitive {
+		markCaseCollisions(sendable)
+	}
 
-	s, err := e.dispatch(ctx, conns, targets, idx)
+	s, err := e.dispatch(ctx, conns, sendable, idx, collector)
 	if err != nil {
+		if ctx.Err() != nil {
+			// Asked to stop: the files under way were finished and nothing
+			// after them was started. What the cycle did get through is
+			// still worth a summary, and so is what it left.
+			s.Interrupted = true
+			s.NotStarted = len(targets) - s.Total
+			s = e.finishCycle(start, s)
+		}
 		return s, err
 	}
+	return e.finishCycle(start, s), nil
+}
+
+// finishCycle records the summary of a cycle that ran to the end.
+func (e *Engine) finishCycle(start time.Time, s Summary) Summary {
 	s.Elapsed = e.now().Sub(start)
 	summary := []any{
 		logging.KeyEvent, logging.EventSummary,
@@ -263,11 +301,16 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 		// zero for it in every summary it ever writes.
 		summary = append(summary, "dirs_removed", s.DirsRemoved)
 	}
-	e.log.Info("cycle complete", summary...)
+	if s.Interrupted {
+		summary = append(summary, "not_started", s.NotStarted)
+		e.log.Warn("cycle interrupted", summary...)
+	} else {
+		e.log.Info("cycle complete", summary...)
+	}
 	if e.opts.OnSummary != nil {
 		e.opts.OnSummary(s)
 	}
-	return s, nil
+	return s
 }
 
 // openConnections gives each worker its own pair, reusing the two the cycle
@@ -277,7 +320,7 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 // how many connections a cycle holds open at once.
 func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets int) ([]*conn, error) {
 	workers := min(e.cfg.Workers, targets)
-	conns := []*conn{{e: e, src: src, dst: dst}}
+	conns := []*conn{{e: e, ctx: ctx, src: src, dst: dst}}
 
 	for i := 1; i < workers; i++ {
 		s, err := e.opts.NewSrc(ctx)
@@ -289,7 +332,7 @@ func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets 
 			_ = s.Close()
 			return conns, err
 		}
-		conns = append(conns, &conn{e: e, src: s, dst: d})
+		conns = append(conns, &conn{e: e, ctx: ctx, src: s, dst: d})
 	}
 	return conns, nil
 }
@@ -299,15 +342,13 @@ func (e *Engine) openConnections(ctx context.Context, src, dst fsys.FS, targets 
 // A file that fails is reported rather than returned, so one bad file does not
 // end the cycle; only a cancelled run or a connection that could not be rebuilt
 // comes back as an error.
-func (e *Engine) dispatch(ctx context.Context, conns []*conn, targets []target, idx *destIndex) (Summary, error) {
-	collector := &Collector{}
+func (e *Engine) dispatch(ctx context.Context, conns []*conn, targets []target, idx *destIndex, collector *Collector) (Summary, error) {
 	jobs := make(chan target)
 
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		defer close(jobs)
-		for i, t := range targets {
-			t.index, t.total = i+1, len(targets)
+		for _, t := range targets {
 			select {
 			case jobs <- t:
 			case <-gctx.Done():
@@ -353,7 +394,7 @@ func (e *Engine) pruneEmptied(ctx context.Context, c *conn, dirs []string) int {
 	if !e.cfg.RemoveEmptyDirs || e.cfg.PostAction == config.PostNone || len(dirs) == 0 {
 		return 0
 	}
-	if err := c.ensure(ctx); err != nil {
+	if err := c.ensure(); err != nil {
 		e.log.Warn("could not reach the sending side to remove empty directories",
 			logging.KeyEvent, logging.EventPostAction, logging.KeyError, err.Error())
 		return 0
@@ -394,23 +435,30 @@ func (e *Engine) pruneEmptied(ctx context.Context, c *conn, dirs []string) int {
 // a transfer failed, and trying again over the same dead one would fail in the
 // same way.
 type conn struct {
-	e   *Engine
+	e *Engine
+	// ctx is the cycle's context, which every connection is opened with,
+	// including one rebuilt from inside a worker. A connection may keep that
+	// context for as long as it lives — an SMB share does, and fails every call
+	// once it is done — so it must not be the worker group's, which ends as
+	// soon as the workers do: worker 0's connection is used after that, to
+	// remove the directories the cycle emptied.
+	ctx context.Context
 	src fsys.FS
 	dst fsys.FS
 }
 
 // ensure opens whatever is not currently connected.
-func (c *conn) ensure(ctx context.Context) error {
+func (c *conn) ensure() error {
 	if c.src != nil && c.dst != nil {
 		return nil
 	}
 	c.close()
 
-	src, err := c.e.opts.NewSrc(ctx)
+	src, err := c.e.opts.NewSrc(c.ctx)
 	if err != nil {
 		return err
 	}
-	dst, err := c.e.opts.NewDst(ctx)
+	dst, err := c.e.opts.NewDst(c.ctx)
 	if err != nil {
 		_ = src.Close()
 		return err
@@ -433,12 +481,48 @@ func (c *conn) close() {
 }
 
 // target is a file the cycle will handle. Files rejected by the size limit are
-// carried along so that they appear in the plan and in the summary.
+// carried along so that they appear in the plan and in the summary, but are
+// reported without being handed to a worker.
 type target struct {
 	file         scan.File
 	overSizeCap  bool
 	recurring    bool
 	index, total int
+	// collidesWith names another file of this cycle that the destination
+	// would store under the same name, because it does not distinguish case.
+	collidesWith string
+}
+
+// markCaseCollisions finds files that differ only in case, for a destination
+// that does not tell them apart.
+//
+// A case sensitive source can hold A.csv and a.csv side by side; a Windows or
+// macOS disk or an SMB share cannot. Sending both would leave whichever arrived
+// last, report both as delivered, and with post_action delete or move take both
+// sources away — one of the two files lost with nothing to show for it. Neither
+// is sent: there is no telling which one the destination should end up with.
+//
+// Whole paths are compared, so Invoices/a.csv and invoices/a.csv collide too.
+// Only files that are to be written are passed in: one the size cap turned away
+// collides with nothing.
+func markCaseCollisions(targets []target) {
+	byFolded := map[string][]int{}
+	for i, t := range targets {
+		folded := strings.ToLower(t.file.Path)
+		byFolded[folded] = append(byFolded[folded], i)
+	}
+	for _, group := range byFolded {
+		if len(group) < 2 {
+			continue
+		}
+		for _, i := range group {
+			other := group[0]
+			if other == i {
+				other = group[1]
+			}
+			targets[i].collidesWith = targets[other].file.Path
+		}
+	}
 }
 
 // collect scans, waits for files to settle and applies the size limit.

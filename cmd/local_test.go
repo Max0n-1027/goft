@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // localPair is an end-to-end setup with both sides on this machine: no server,
@@ -166,5 +168,134 @@ func TestLocalPairAcceptsADestinationThatDoesNotExistYet(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "will be created on first transfer") {
 		t.Errorf("report does not say the destination will be created:\n%s", out.String())
+	}
+}
+
+func TestRelativePathsAreRecordedInFull(t *testing.T) {
+	// A job file may name its directories relative to where goft runs, but the
+	// log it writes is read long after that working directory is forgotten.
+	work := t.TempDir()
+	t.Chdir(work)
+	for _, d := range []string{"out", "backup"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join("out", "a.csv"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("job.yaml", []byte(`
+local:
+  path: out
+remote:
+  protocol: local
+  path: backup
+stable_duration: 0s
+log:
+  path: goft.log
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	resetFlags()
+	rootCmd.SetArgs([]string{"send", "-c", "job.yaml", "--no-console"})
+	if code := Execute(); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+
+	b, err := os.ReadFile(filepath.Join(work, "goft.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		`"src":` + quoteJSON(filepath.Join(work, "out", "a.csv")):    "src",
+		`"dst":` + quoteJSON(filepath.Join(work, "backup", "a.csv")): "dst",
+	}
+	for needle, field := range want {
+		if !strings.Contains(string(b), needle) {
+			t.Errorf("%s is not recorded in full; want %s in\n%s", field, needle, b)
+		}
+	}
+}
+
+func quoteJSON(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func TestTheLogOpensWithTheSettings(t *testing.T) {
+	// A log kept for auditing starts with what the run was about to use, so
+	// that a warning about those settings is read after them, not before.
+	p := newLocalPair(t, "") // stable_duration: 0s draws a warning
+	logFile := filepath.Join(t.TempDir(), "goft.log")
+	p.cfgPath = p.config(p.src, p.dst, "log:\n  path: "+logFile+"\n")
+
+	if code := p.run("send", "--no-console"); code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	b, err := os.ReadFile(logFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, _ := strings.Cut(string(b), "\n")
+	if !strings.Contains(first, `"msg":"starting"`) {
+		t.Errorf("first record = %s, want the settings", first)
+	}
+	if !strings.Contains(string(b), "stable_duration is 0") {
+		t.Error("the warning should still be there, after the settings")
+	}
+}
+
+func TestSendStopsCleanlyOnAnInterrupt(t *testing.T) {
+	// A one-shot run had no signal handling at all: Ctrl+C killed it where it
+	// stood, with nothing in the log to say the run had not finished.
+	requirePOSIX(t, "sends SIGINT to its own process")
+	p := newLocalPair(t, "")
+	logFile := filepath.Join(t.TempDir(), "goft.log")
+	// Settling holds the run for a while before anything is sent, which is
+	// where the interrupt lands.
+	p.cfgPath = p.config(p.src, p.dst, "log:\n  path: "+logFile+"\n")
+	body, _ := os.ReadFile(p.cfgPath)
+	if err := os.WriteFile(p.cfgPath, []byte(strings.Replace(string(body), "stable_duration: 0s", "stable_duration: 10s", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p.write(p.src, "invoice.csv", "id\n")
+
+	done := make(chan int, 1)
+	go func() { done <- p.run("send", "--no-console") }()
+
+	// The signal must not arrive before the run is listening for it, or it
+	// takes the whole test binary down. The settings record is written after
+	// the handler is in place, so it is the cue.
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if b, _ := os.ReadFile(logFile); strings.Contains(string(b), `"msg":"starting"`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the run never started")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	self, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := self.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case code := <-done:
+		// Stopped before the run was complete, which is what 2 means.
+		if code != 2 {
+			t.Errorf("exit code = %d, want 2", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the run did not stop on SIGINT")
+	}
+	b, _ := os.ReadFile(logFile)
+	if !strings.Contains(string(b), `"msg":"interrupted"`) {
+		t.Errorf("the log should say the run was interrupted:\n%s", b)
 	}
 }

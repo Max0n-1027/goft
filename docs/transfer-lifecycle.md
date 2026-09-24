@@ -8,7 +8,12 @@ the other way round, and everything below is the same in both directions.
 ## 1. The destination directory
 
 The parent directory is created if the cycle's listing showed it missing, once
-per directory rather than once per file.
+per directory rather than once per file. That includes the destination itself:
+for `send`, `remote.path` need not exist before the first transfer, and whatever
+levels of it are missing are created, on every protocol. (`local.path` is
+checked at startup and has to exist, for `recv` as well.)
+A directory is created in one request when its parent exists, and the missing
+parents are only worked out when it does not.
 
 ## 2. Is it already there?
 
@@ -21,6 +26,12 @@ Names are matched exactly first, then case-insensitively when the destination
 cannot tell `FOO.CSV` from `foo.csv` (a Windows or macOS disk, or an SMB share).
 Otherwise a file that is already there would be transferred again on every
 cycle.
+
+The same destinations cannot hold two files whose names differ only in case,
+which a Linux source can. When one cycle finds `A.csv` and `a.csv` — or
+`Invoices/a.csv` and `invoices/a.csv` — neither is sent, and both are recorded
+as failed, naming the other. Sending both would leave whichever arrived last,
+report both as delivered, and with `post_action: delete` remove both sources.
 
 What happens next depends on `on_exists`:
 
@@ -80,6 +91,20 @@ unnoticed. Hashing while streaming costs no extra I/O.
 `hash_src` and `hash_dst` are recorded at info level, so the log alone shows
 that a file arrived intact.
 
+Verification compares what was read with what was written, so on its own it
+cannot tell that the source's writer was still at work: both sides hold the same
+bytes, just not the whole file. The number of bytes read is therefore also
+checked against the size the file settled at. If they differ, the temporary file
+is discarded, nothing appears under the real name, and the file is recorded as
+failed:
+
+```
+the source changed while it was being transferred: 1048576 bytes when it settled, 1310720 read
+```
+
+It is not retried at once, since the writer would most likely still be at it.
+The next cycle's settling decides when the file is ready.
+
 ## 5. Renamed into place
 
 Only after verification passes. goft renames first, since a server that replaces
@@ -118,6 +143,22 @@ A post-transfer action that fails is retried on its own, with a fresh
 connection. It does not cause the file to be transferred again: the file
 arrived, and sending it a second time would be worse than leaving the source in
 place.
+
+`delete` and `move` take the source away, so before either of them the source
+is looked at again. It is looked at once right after it was read and once more
+just before the action, and if its size or timestamp moved in between — a writer
+appended while the file was being verified and published — the source is left
+where it is and the file is recorded as failed:
+
+```
+the source changed while it was being transferred: it was modified after being sent, so it was left in place (1048576 bytes then, 1310720 now)
+```
+
+What was sent did arrive, but deleting the source now would throw away data
+that never reached the destination. The same check guards a file that
+`on_exists: overwrite` found identical, against the size it was compared at.
+These looks cost two extra requests per file, and only when the action deletes
+or moves the source.
 
 ## 7. Empty directories
 
@@ -168,8 +209,24 @@ between:
 Only failures that could plausibly succeed next time are retried. A dropped
 connection, a timeout or a failed verification is; a missing file, a permission
 error, an existing-file error or a 5xx reply from an FTP server is not, because
-the next attempt would fail identically. The classification is by exclusion:
-anything not known to be permanent is treated as worth another try.
+the next attempt would fail identically. Nor is a source that changed while it
+was sent: its writer is most likely still at it, and settling on the next cycle
+is the better judge. The classification is by exclusion: anything not known to
+be permanent is treated as worth another try.
+
+A connection that goes quiet is handled the same way. When one moves no data
+for `remote.io_timeout` (5 minutes by default) while something is waiting on
+it, it is dropped, the waiting call fails with a message saying so, and the
+file is retried over a new connection:
+
+```
+the connection stalled: nothing moved for 5m0s, so the connection was dropped (...)
+```
+
+It measures silence rather than duration, so a transfer that keeps moving is
+never cut off however long it takes. Opening a connection has its own limit,
+`remote.connect_timeout` (30 seconds), covering the handshake and the login as
+well as the TCP connection.
 
 One file failing does not stop the cycle. The others carry on, the summary
 counts the failures, and `send`/`recv` exit 1 — as opposed to exit 2, which

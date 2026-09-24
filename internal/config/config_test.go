@@ -195,9 +195,11 @@ func validConfig(local string) *Config {
 		Name:  "job",
 		Local: Local{Path: local},
 		Remote: Remote{
-			Protocol: ProtocolSFTP,
-			Host:     "example",
-			Path:     "/upload",
+			Protocol:       ProtocolSFTP,
+			Host:           "example",
+			Path:           "/upload",
+			ConnectTimeout: DefaultConnectTimeout,
+			IOTimeout:      DefaultIOTimeout,
 		},
 		Verify:         VerifyHash,
 		OnExists:       OnExistsSkip,
@@ -424,5 +426,114 @@ func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
 		if strings.Contains(w, "remove_empty_dirs") {
 			t.Errorf("warning %q should not appear with recursion on", w)
 		}
+	}
+}
+
+func TestLoadMakesLocalPathsAbsolute(t *testing.T) {
+	// Every log record names both ends in full, because a path relative to a
+	// working directory nobody remembers identifies nothing months later. The
+	// paths the records are built from therefore have to be absolute already.
+	work := t.TempDir()
+	t.Chdir(work)
+	for _, d := range []string{"out", "backup", "done"} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := writeConfig(t, `
+local:
+  path: out
+remote:
+  protocol: local
+  path: backup
+post_action: move
+move_to: done
+log:
+  path: logs/goft.log
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, got := range map[string]string{
+		"local.path":  cfg.Local.Path,
+		"remote.path": cfg.Remote.Path,
+		"move_to":     cfg.MoveTo,
+		"log.path":    cfg.Log.Path,
+	} {
+		if !filepath.IsAbs(got) || !strings.HasPrefix(got, work) {
+			t.Errorf("%s = %q, want it resolved against %s", name, got, work)
+		}
+	}
+}
+
+func TestLoadLeavesARemotePathAlone(t *testing.T) {
+	// A server's path is the server's business; it is not relative to anything
+	// on this machine.
+	p := writeConfig(t, `
+local:
+  path: `+t.TempDir()+`
+remote:
+  protocol: sftp
+  host: example
+  path: upload/invoice
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.Path != "upload/invoice" {
+		t.Errorf("remote.path = %q, want it as written", cfg.Remote.Path)
+	}
+}
+
+func TestTheExampleConfigurationLoads(t *testing.T) {
+	// goft.example.yaml is what people copy. It has to parse, decode and, the
+	// paths it names aside, validate — and it must leave log.fields out, so
+	// that a copy of it writes the full set.
+	cfg, err := Load(filepath.Join("..", "..", "goft.example.yaml"))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Log.Fields != nil {
+		t.Errorf("log.fields = %v, want it left out so the full set applies", cfg.Log.Fields)
+	}
+
+	// Point the paths at directories that exist; everything else is as written.
+	cfg.Local.Path = t.TempDir()
+	cfg.MoveTo = t.TempDir()
+	if err := Validate(cfg); err != nil {
+		t.Errorf("Validate: %v", err)
+	}
+}
+
+func TestTimeoutsDefaultAndValidate(t *testing.T) {
+	p := writeConfig(t, `
+local:
+  path: `+t.TempDir()+`
+remote:
+  protocol: sftp
+  host: example
+  path: /upload
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.ConnectTimeout != DefaultConnectTimeout || cfg.Remote.IOTimeout != DefaultIOTimeout {
+		t.Errorf("timeouts = %v / %v, want the defaults", cfg.Remote.ConnectTimeout, cfg.Remote.IOTimeout)
+	}
+
+	cfg.Remote.IOTimeout = 0
+	if err := Validate(cfg); err != nil {
+		t.Errorf("io_timeout: 0 should turn the check off, got %v", err)
+	}
+	cfg.Remote.ConnectTimeout = 0
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "connect_timeout") {
+		t.Errorf("Validate() = %v, want connect_timeout: 0 refused", err)
+	}
+	cfg.Remote.ConnectTimeout, cfg.Remote.IOTimeout = time.Second, -time.Second
+	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "io_timeout") {
+		t.Errorf("Validate() = %v, want a negative io_timeout refused", err)
 	}
 }

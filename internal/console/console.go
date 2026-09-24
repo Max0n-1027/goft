@@ -128,8 +128,15 @@ func (c *Console) Result(r engine.Result) {
 	if r.Attempts > 1 {
 		line += fmt.Sprintf("  (attempt %d)", r.Attempts)
 	}
-	if c.level <= slog.LevelDebug && r.Hashed {
-		line += fmt.Sprintf("  %s %.1f MiB/s", verify.Format(r.DstHash), rate(r))
+	if c.level <= slog.LevelDebug {
+		if r.Hashed {
+			line += "  " + verify.Format(r.DstHash)
+		}
+		// Only a file that was sent has a rate. A skip's bytes are the size of
+		// a file that stayed put, and its time is how long deciding took.
+		if r.Outcome == engine.Success {
+			line += fmt.Sprintf("  %.1f MiB/s", rate(r))
+		}
 	}
 
 	// A cycle is worth showing if something moved, or if something needs
@@ -170,6 +177,12 @@ func (c *Console) Summary(s engine.Summary) {
 	case s.PlannedOnly:
 		c.emit(fmt.Sprintf("%d files, %s would be transferred (nothing was sent)",
 			s.Total, humanBytes(s.Bytes)))
+	case s.Interrupted:
+		// Worth seeing even when nothing had moved yet: the run was stopped,
+		// and what it left undone is part of the answer.
+		c.notable = true
+		c.emit(fmt.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed, %d not started  interrupted after %.1fs",
+			s.Total+s.NotStarted, s.Succeeded, humanBytes(s.Bytes), s.Skipped, s.Failed, s.NotStarted, s.Elapsed.Seconds()))
 	case s.Total > 0:
 		c.emit(fmt.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed  in %.1fs",
 			s.Total, s.Succeeded, humanBytes(s.Bytes), s.Skipped, s.Failed, s.Elapsed.Seconds()))
