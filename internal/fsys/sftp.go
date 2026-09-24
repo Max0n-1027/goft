@@ -2,6 +2,8 @@ package fsys
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -53,10 +55,11 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(netConn, addr, &ssh.ClientConfig{
-		User:            res.User,
-		Auth:            auths,
-		HostKeyCallback: hostKey,
-		Timeout:         30 * time.Second,
+		User:              res.User,
+		Auth:              auths,
+		HostKeyCallback:   hostKey,
+		HostKeyAlgorithms: knownHostAlgorithms(res, addr, netConn.RemoteAddr()),
+		Timeout:           30 * time.Second,
 	})
 	if err != nil {
 		netConn.Close()
@@ -134,6 +137,75 @@ func hostKeyCallback(res *Resolved) (ssh.HostKeyCallback, error) {
 		}
 		return recordHostKey(path, hostname, remote, key)
 	}, nil
+}
+
+// hostKeyPreference is the order host key algorithms are offered in when
+// known_hosts restricts them, strongest first, as OpenSSH orders them. Each is
+// listed with the type of key it is a signature over.
+var hostKeyPreference = []struct{ algorithm, keyType string }{
+	{ssh.KeyAlgoED25519, ssh.KeyAlgoED25519},
+	{ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA256},
+	{ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA384},
+	{ssh.KeyAlgoECDSA521, ssh.KeyAlgoECDSA521},
+	{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSA},
+	{ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA},
+	// Still offered for a known RSA key that has nothing better, as it was
+	// before; a server limited to it keeps working. A host known only by a
+	// DSA key matches nothing here and is left to the defaults, as before.
+	{ssh.KeyAlgoRSA, ssh.KeyAlgoRSA},
+}
+
+// probeKey is offered to the known_hosts check only to learn which keys it holds
+// for a host; no host will ever present it.
+var probeKey = sync.OnceValue(func() ssh.PublicKey {
+	pub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil
+	}
+	key, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		return nil
+	}
+	return key
+})
+
+// knownHostAlgorithms lists the host key algorithms to negotiate: those
+// known_hosts holds a key for, for this host.
+//
+// Left to itself the client offers ECDSA before ed25519, and a server with
+// both keys — a stock OpenSSH server — then presents its ECDSA key. The
+// known_hosts OpenSSH leaves behind often lists only the ed25519 one, having
+// negotiated that, so the check found a key of a different type and reported a
+// mismatch: a host that ssh connected to without complaint was refused as if
+// under attack. OpenSSH avoids this by preferring the algorithms it already
+// has a key for, and so does this.
+//
+// A host known_hosts does not list, or a check that is not being made, leaves
+// the choice to the defaults.
+func knownHostAlgorithms(res *Resolved, addr string, remote net.Addr) []string {
+	if res.SkipHostKey || res.KnownHosts == "" || probeKey() == nil {
+		return nil
+	}
+	check, err := knownhosts.New(res.KnownHosts)
+	if err != nil {
+		return nil
+	}
+	var ke *knownhosts.KeyError
+	if err := check(addr, remote, probeKey()); !errors.As(err, &ke) || len(ke.Want) == 0 {
+		return nil
+	}
+
+	known := map[string]bool{}
+	for _, k := range ke.Want {
+		known[k.Key.Type()] = true
+	}
+	var algorithms []string
+	for _, p := range hostKeyPreference {
+		if known[p.keyType] {
+			algorithms = append(algorithms, p.algorithm)
+		}
+	}
+	return algorithms
 }
 
 // isUnknownHost reports whether a known_hosts check failed only because the

@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,5 +153,59 @@ func TestAcceptNewRecordsAHostOnceWhenWorkersConnectTogether(t *testing.T) {
 	}
 	if lines := strings.Count(string(b), "\n"); lines != 1 {
 		t.Errorf("known_hosts has %d lines, want the host recorded once:\n%s", lines, b)
+	}
+}
+
+func TestAHostKnownOnlyByItsEd25519KeyConnects(t *testing.T) {
+	// The in-process server has an ECDSA host key as well as an ed25519 one,
+	// and the known_hosts it hands out lists only the latter — the state
+	// ssh leaves behind. Left to its own preference the client picked ECDSA
+	// and reported a mismatch against a host ssh connects to without a word.
+	r := sftptest.Start(t, t.TempDir())
+	b, err := os.ReadFile(r.KnownHosts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), ssh.KeyAlgoED25519) || strings.Contains(string(b), "ecdsa") {
+		t.Fatalf("known_hosts = %q, want the ed25519 key alone", b)
+	}
+
+	fs, err := NewRemote(context.Background(), r)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	fs.Close()
+}
+
+func TestHostKeyAlgorithmsFollowWhatIsKnown(t *testing.T) {
+	_, edPriv, _ := ed25519.GenerateKey(rand.Reader)
+	edKey, _ := ssh.NewPublicKey(edPriv.Public())
+	rsaPriv, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaKey, _ := ssh.NewPublicKey(rsaPriv.Public())
+
+	kh := filepath.Join(t.TempDir(), "known_hosts")
+	lines := knownhosts.Line([]string{"known.example"}, edKey) + "\n" +
+		knownhosts.Line([]string{"known.example"}, rsaKey) + "\n"
+	if err := os.WriteFile(kh, []byte(lines), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	remote := &net.TCPAddr{IP: net.IPv4(192, 0, 2, 1), Port: 22}
+
+	got := knownHostAlgorithms(&Resolved{KnownHosts: kh}, "known.example:22", remote)
+	want := []string{ssh.KeyAlgoED25519, ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSA}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("algorithms = %v, want %v: only what known_hosts can vouch for", got, want)
+	}
+
+	// A host known_hosts does not list is left to the defaults, which is what
+	// lets accept-new record whatever it is shown.
+	if got := knownHostAlgorithms(&Resolved{KnownHosts: kh}, "unknown.example:22", remote); got != nil {
+		t.Errorf("unknown host: algorithms = %v, want the defaults", got)
+	}
+	if got := knownHostAlgorithms(&Resolved{KnownHosts: kh, SkipHostKey: true}, "known.example:22", remote); got != nil {
+		t.Errorf("no checking: algorithms = %v, want the defaults", got)
 	}
 }

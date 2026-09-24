@@ -139,6 +139,11 @@ recorded there — creating the file if need be — while a host that is listed
 with a different key is refused, since that is what a man in the middle looks
 like.
 
+For a host known_hosts lists, goft negotiates only the kinds of host key it
+holds for that host, as OpenSSH does. A known_hosts with just the host's
+ed25519 key — what `ssh` often leaves behind — is therefore enough, even though
+the server also has keys of other kinds.
+
 ### Running several jobs
 
 goft does not manage multiple jobs; run one process per configuration file. On
