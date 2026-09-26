@@ -122,9 +122,17 @@ type Remote struct {
 	Password Secret `mapstructure:"password"`
 
 	// PrivateKey is the sftp key file, and PrivateKeyPassphrase unlocks it if
-	// it has one. ssh-agent is not used.
+	// it has one. A key the ssh-agent holds needs no passphrase, and naming a
+	// key here limits the agent to that one key.
 	PrivateKey           string `mapstructure:"private_key"`
 	PrivateKeyPassphrase Secret `mapstructure:"private_key_passphrase"`
+	// UseSSHAgent turns off asking the ssh-agent for sftp keys, and SSHAgent
+	// names the agent to ask: a Unix socket, or on Windows a named pipe. Left
+	// empty, it is found as ssh finds it, through IdentityAgent in ssh_config,
+	// then SSH_AUTH_SOCK, then on Windows the OpenSSH agent service's pipe.
+	// Nil means enabled.
+	UseSSHAgent *bool  `mapstructure:"use_ssh_agent"`
+	SSHAgent    string `mapstructure:"ssh_agent"`
 	// KnownHosts verifies the sftp host key. Connecting without it requires
 	// InsecureSkipHostKeyCheck, which is never assumed.
 	KnownHosts               string `mapstructure:"known_hosts"`
@@ -149,10 +157,11 @@ type Remote struct {
 	Share  string `mapstructure:"share"`
 	Domain string `mapstructure:"domain"`
 
-	// ConnectTimeout bounds how long opening a connection may take, from the
-	// TCP connection through the handshake and login to mounting the share. A
-	// server that accepts the connection and then says nothing would otherwise
-	// hold the job there for good.
+	// ConnectTimeout bounds how long opening a connection may take, from
+	// asking the ssh-agent for keys and the TCP connection through the
+	// handshake and login to mounting the share. A server that accepts the
+	// connection and then says nothing would otherwise hold the job there for
+	// good.
 	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
 	// IOTimeout is how long an open connection may go without moving any data
 	// while something is waiting on it. Past that the connection is dropped and
@@ -200,6 +209,9 @@ func (r Remote) Describe() string {
 
 // SSHConfigEnabled reports whether ~/.ssh/config should be consulted.
 func (r Remote) SSHConfigEnabled() bool { return r.UseSSHConfig == nil || *r.UseSSHConfig }
+
+// SSHAgentEnabled reports whether the ssh-agent should be asked for keys.
+func (r Remote) SSHAgentEnabled() bool { return r.UseSSHAgent == nil || *r.UseSSHAgent }
 
 // NetrcEnabled reports whether ~/.netrc should be consulted.
 func (r Remote) NetrcEnabled() bool { return r.UseNetrc == nil || *r.UseNetrc }

@@ -3,6 +3,7 @@
 package sftptest
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -30,7 +31,11 @@ import (
 // lists only the ed25519 key. A client negotiating whichever algorithm it
 // happens to prefer rather than one known_hosts can vouch for fails against
 // this server exactly as it would against a real one.
-func Start(t *testing.T, root string) config.Remote {
+//
+// The user signs in with the password in the returned configuration, or with
+// any of keys. Without keys the server does not offer public key
+// authentication at all.
+func Start(t *testing.T, root string, keys ...ssh.PublicKey) config.Remote {
 	t.Helper()
 
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -57,6 +62,16 @@ func Start(t *testing.T, root string) config.Remote {
 			}
 			return nil, errors.New("authentication failed")
 		},
+	}
+	if len(keys) > 0 {
+		srvCfg.PublicKeyCallback = func(c ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+			for _, k := range keys {
+				if c.User() == "tester" && bytes.Equal(key.Marshal(), k.Marshal()) {
+					return nil, nil
+				}
+			}
+			return nil, errors.New("key not authorized")
+		}
 	}
 	srvCfg.AddHostKey(signer)
 	srvCfg.AddHostKey(ecdsaSigner)

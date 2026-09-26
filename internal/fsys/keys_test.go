@@ -14,14 +14,23 @@ import (
 	"goft/internal/config"
 )
 
-// writeKey writes an ed25519 private key, encrypted when passphrase is set.
+// writeKey writes a new ed25519 private key, encrypted when passphrase is set.
 func writeKey(t *testing.T, path, passphrase string) {
 	t.Helper()
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var block *pem.Block
+	saveKey(t, path, priv, passphrase)
+}
+
+// saveKey writes priv in the OpenSSH format, encrypted when passphrase is set.
+func saveKey(t *testing.T, path string, priv ed25519.PrivateKey, passphrase string) {
+	t.Helper()
+	var (
+		block *pem.Block
+		err   error
+	)
 	if passphrase != "" {
 		block, err = ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte(passphrase))
 	} else {
@@ -73,7 +82,7 @@ func TestAPassphraseProtectedDefaultKeyDoesNotBlockAPassword(t *testing.T) {
 	if !warned(res, "passphrase") {
 		t.Errorf("warnings = %v, want the skipped key explained", res.Warnings)
 	}
-	auths, err := sftpAuths(res)
+	auths, err := sftpAuths(res, nil)
 	if err != nil || len(auths) != 1 {
 		t.Fatalf("sftpAuths() = %d methods, %v; want the password on its own", len(auths), err)
 	}
@@ -91,7 +100,7 @@ func TestADefaultKeyIsUsedWhenItsPassphraseIsGiven(t *testing.T) {
 	if len(res.KeyFiles) != 1 {
 		t.Fatalf("key files = %v, want the default key kept", res.KeyFiles)
 	}
-	if auths, err := sftpAuths(res); err != nil || len(auths) != 2 {
+	if auths, err := sftpAuths(res, nil); err != nil || len(auths) != 2 {
 		t.Errorf("sftpAuths() = %d methods, %v; want the key and the password", len(auths), err)
 	}
 }
@@ -144,7 +153,7 @@ func TestAConfiguredKeyThatCannotBeUnlockedIsAnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sftpAuths(res); err == nil {
+	if _, err := sftpAuths(res, nil); err == nil {
 		t.Error("want an error for a configured key that cannot be unlocked")
 	}
 }
@@ -173,7 +182,7 @@ func TestAPassphraseDoesNotBreakAKeyThatHasNone(t *testing.T) {
 	if len(res.KeyFiles) != 1 {
 		t.Fatalf("key files = %v, want the unencrypted key kept", res.KeyFiles)
 	}
-	if auths, err := sftpAuths(res); err != nil || len(auths) != 2 {
+	if auths, err := sftpAuths(res, nil); err != nil || len(auths) != 2 {
 		t.Errorf("sftpAuths() = %d methods, %v; want the key and the password", len(auths), err)
 	}
 }

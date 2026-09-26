@@ -72,6 +72,11 @@ func (r Remote) LogValue() slog.Value {
 	if r.PrivateKeyPassphrase.IsSet() {
 		attrs = append(attrs, slog.Any("private_key_passphrase", r.PrivateKeyPassphrase))
 	}
+	if !r.SSHAgentEnabled() {
+		attrs = append(attrs, slog.Bool("use_ssh_agent", false))
+	}
+	// Not made absolute: on Windows it may name a pipe rather than a file.
+	add("ssh_agent", r.SSHAgent)
 	add("known_hosts", absPath(r.KnownHosts))
 	if r.InsecureSkipHostKeyCheck {
 		attrs = append(attrs, slog.Bool("insecure_skip_host_key_check", true))

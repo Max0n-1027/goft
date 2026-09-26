@@ -180,7 +180,7 @@ the connection stalled: nothing moved for 5m0s, so the connection was dropped (.
 ```
 
 測るのは経過時間ではなく止まっている時間なので、動き続けている転送はどれだけ長くかかっても打ち切られません。
-接続の確立には別の上限 `remote.connect_timeout`（既定30秒）があり、TCP 接続だけでなくハンドシェイクとログインまでを含みます。
+接続の確立には別の上限 `remote.connect_timeout`（既定30秒）があり、TCP 接続だけでなくハンドシェイクとログイン、sftp では ssh-agent への問い合わせまでを含みます。
 
 1ファイルの失敗で周期は止まりません。他のファイルはそのまま処理され、サマリに失敗件数が入り、
 `send` / `recv` は終了コード 1 で終わります。終了コード 2 は「そもそも実行を開始できなかった」場合です。

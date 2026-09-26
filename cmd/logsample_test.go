@@ -2,6 +2,9 @@ package cmd
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -12,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 
 	"goft/internal/sftptest"
 )
@@ -594,4 +599,102 @@ log:
 	if err := os.WriteFile(filepath.Join(out, "pruning.log"), []byte(text), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// TestGenerateAgentSample writes the `goft test` output quoted in
+// docs/ssh-agent.md: a job that signs in with nothing but a key in the agent, a
+// job that names its key and lets the agent unlock it, and an agent that is
+// not there. Like the others it is skipped unless GOFT_LOG_SAMPLE names an
+// output directory.
+func TestGenerateAgentSample(t *testing.T) {
+	out := os.Getenv("GOFT_LOG_SAMPLE")
+	if out == "" {
+		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, other, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sshPub, err := ssh.NewPublicKey(pub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The job's own key, passphrase protected, as a key kept on disk should be.
+	keyFile := filepath.Join(t.TempDir(), "id_invoice")
+	block, err := ssh.MarshalPrivateKeyWithPassphrase(priv, "", []byte("not written anywhere"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(keyFile, pem.EncodeToMemory(block), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	localDir, remoteDir := t.TempDir(), t.TempDir()
+	remote := sftptest.Start(t, remoteDir, sshPub)
+	sock := sftptest.StartAgent(t, priv, other)
+	gone := filepath.Join(t.TempDir(), "agent.sock")
+
+	run := func(name, auth string) {
+		body := fmt.Sprintf(`
+name: invoice-upload
+local:
+  path: %s
+remote:
+  protocol: sftp
+  host: %s
+  port: %d
+  user: %s
+  known_hosts: %s
+  path: %s
+  use_ssh_config: false
+%sstable_duration: 3s
+`, localDir, remote.Host, remote.Port, remote.User, remote.KnownHosts, remoteDir, auth)
+		cfg := filepath.Join(t.TempDir(), "job.yaml")
+		if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		var buf bytes.Buffer
+		resetFlags()
+		rootCmd.SetArgs([]string{"test", "-c", cfg})
+		rootCmd.SetOut(&buf)
+		Execute()
+		rootCmd.SetOut(os.Stdout)
+
+		text := buf.String()
+		for from, to := range map[string]string{
+			sock:        "/run/user/1000/ssh-agent.sock",
+			gone:        "/run/user/1000/ssh-agent.sock",
+			keyFile:     "/home/svc-transfer/.ssh/id_invoice",
+			localDir:    "/data/out/invoice",
+			remoteDir:   "/upload/invoice",
+			remote.Host: "invoice-sftp",
+			"tester":    "uploader",
+		} {
+			text = strings.ReplaceAll(text, from, to)
+		}
+		text = regexp.MustCompile(`invoice-sftp:\d+`).ReplaceAllString(text, "invoice-sftp:22")
+		text = regexp.MustCompile(`port = \d+`).ReplaceAllString(text, "port = 22")
+		text = regexp.MustCompile(`/tmp/[^\s]*?/known_hosts`).
+			ReplaceAllString(text, "/home/svc-transfer/.ssh/known_hosts")
+		text = regexp.MustCompile(`/tmp/[^\s]*?/job\.yaml`).
+			ReplaceAllString(text, "/etc/goft/invoice-upload.yaml")
+		if err := os.WriteFile(filepath.Join(out, name), []byte(realign(text)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Setenv("SSH_AUTH_SOCK", sock)
+	run("agent-test.txt", "")
+	run("agent-private-key.txt", "  private_key: "+keyFile+"\n")
+	t.Setenv("SSH_AUTH_SOCK", gone)
+	run("agent-unreachable.txt", "  password: secret\n")
 }
