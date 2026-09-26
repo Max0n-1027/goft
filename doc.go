@@ -59,7 +59,7 @@ Credentials need not be written in plain text. Any ${VAR} in a value is
 replaced from the environment, and one that is not set is an error; a $ not
 followed by a brace is an ordinary character. sftp fills in whatever is left out from
 ~/.ssh/config, and ftp does the same from ~/.netrc (%USERPROFILE%\.netrc on
-Windows). On Windows a generic credential registered as goft:<protocol>://<host>
+Windows); sftp also takes keys from ssh-agent, as ssh does. On Windows a generic credential registered as goft:<protocol>://<host>
 supplies the user and password for any protocol, and is read before those files:
 
 	cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret

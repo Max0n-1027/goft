@@ -60,7 +60,7 @@ type Resolution struct {
 	// Value is what it ended up as, with any secret already masked.
 	Value string
 	// Source is where it came from: yaml, ssh_config, netrc,
-	// credential_manager or default.
+	// credential_manager, env or default.
 	Source string
 }
 
@@ -73,7 +73,8 @@ const (
 )
 
 // Resolved is the outcome of merging the job configuration with whatever the
-// protocol consults besides: ssh_config, netrc or the Credential Manager.
+// protocol consults besides: ssh_config, netrc, the Credential Manager or the
+// ssh-agent.
 type Resolved struct {
 	// Host is the name to connect to, which for an sftp alias is the HostName
 	// from ssh_config rather than the alias itself.
@@ -85,6 +86,12 @@ type Resolved struct {
 	Passphrase config.Secret
 	// KeyFiles are the sftp identities to offer, in order.
 	KeyFiles []string
+	// Agent is the ssh-agent to take keys from, a Unix socket or on Windows a
+	// named pipe, or empty for none. IdentitiesOnly limits it to the keys in
+	// KeyFiles, as ssh_config's IdentitiesOnly does and as naming private_key
+	// in the job does.
+	Agent          string
+	IdentitiesOnly bool
 	// KnownHosts verifies the host key unless SkipHostKey is set.
 	KnownHosts  string
 	SkipHostKey bool

@@ -10,6 +10,8 @@
   what it checks before it runs, and when it beats `cp`.
 - [What a run looks like on screen](console-output.md) — `goft test`,
   `--dry-run`, a transfer, and how the two output streams are kept apart.
+- [Authenticating with ssh-agent](ssh-agent.md) — where goft finds the agent,
+  which keys it offers and in what order, and jobs run as a service.
 
 Every example on these pages is captured from a real run against a live sftp
 server, by the test in [cmd/logsample_test.go](../cmd/logsample_test.go). Only

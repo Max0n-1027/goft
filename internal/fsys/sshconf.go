@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
@@ -128,12 +129,20 @@ func configLookup(host string, configs []*ssh_config.Config) sshLookup {
 	}
 }
 
-// resolveSFTP merges the job configuration with ~/.ssh/config.
+// resolveSFTP merges the job configuration with ~/.ssh/config and the
+// ssh-agent.
 //
 // Precedence is YAML, then ssh_config, then a built-in default. Every value
 // records where it came from so that goft test and the debug log can explain
 // the connection that was actually attempted.
 func resolveSFTP(r config.Remote) (*Resolved, error) {
+	return resolveSFTPBy(r, time.Now().Add(r.ConnectTimeoutOrDefault()))
+}
+
+// resolveSFTPBy is resolveSFTP with a deadline for the agent to answer by.
+// Connecting passes its own, so that an agent that has stopped answering
+// counts against connect_timeout like any other part of the attempt.
+func resolveSFTPBy(r config.Remote, deadline time.Time) (*Resolved, error) {
 	look, err := newSSHLookup(r)
 	if err != nil {
 		return nil, err
@@ -149,7 +158,9 @@ func resolveSFTP(r config.Remote) (*Resolved, error) {
 	}
 	resolveCredentials(res, r)
 	resolveUser(res, look)
-	resolveAuth(res, r, look, home)
+	held, agentSource := resolveAgent(res, r, look, home, deadline)
+	resolveAuth(res, r, look, home, held)
+	recordAgent(res, held, agentSource)
 	resolveKnownHosts(res, r, look, home)
 	resolveHostKeyPolicy(res, look)
 
@@ -232,22 +243,30 @@ func resolveUser(res *Resolved, look sshLookup) {
 	res.record("user", res.User, SourceDefault)
 }
 
-// resolveAuth settles the identities to offer.
+// resolveAuth settles the identity files to offer, and whether the agent may
+// offer keys besides them.
 //
 // Identity files are filtered by existence, because ssh_config commonly names
 // several and only some of them are on any given machine.
 //
 // A key the job file names is always offered, so that failing to unlock it is
-// reported rather than worked around. Keys from ssh_config or the default
-// locations were not asked for by this job, so only those usable as they stand
-// are offered, and the rest are skipped with a warning. Without that, a job
-// authenticating by password could not connect from any account whose own
-// ~/.ssh/id_ed25519 carries a passphrase, which is most accounts a person uses.
-func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
+// reported rather than worked around, and it is the only key offered: the job
+// said which key to use, so the agent's other keys are not tried in its place.
+// Keys from ssh_config or the default locations were not asked for by this job,
+// so only those usable as they stand — or held by the agent — are offered, and
+// the rest are skipped with a warning. Without that, a job authenticating by
+// password could not connect from any account whose own ~/.ssh/id_ed25519
+// carries a passphrase, which is most accounts a person uses.
+func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string, held agentKeys) {
 	if r.PrivateKey != "" {
 		res.KeyFiles = []string{expandTokens(r.PrivateKey, res.Host, res.User, home)}
+		res.IdentitiesOnly = true
 		res.record("private_key", res.KeyFiles[0], SourceYAML)
 		return
+	}
+	if v, ok := look.get("IdentitiesOnly"); ok && strings.EqualFold(strings.TrimSpace(v), "yes") {
+		res.IdentitiesOnly = true
+		res.record("identities_only", v, SourceSSHConfig)
 	}
 
 	var candidates []string
@@ -267,7 +286,7 @@ func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
 	}
 
 	for _, p := range candidates {
-		if why := unusableKey(p, res.Passphrase); why != "" {
+		if why := unusableKey(p, res.Passphrase, held, res.Agent != ""); why != "" {
 			res.Warnings = append(res.Warnings, fmt.Sprintf("skipping the key %s: %s", p, why))
 			continue
 		}
@@ -279,17 +298,23 @@ func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string) {
 }
 
 // unusableKey says why a key file cannot be used as things stand, or returns
-// an empty string when it can.
-func unusableKey(path string, passphrase config.Secret) string {
+// an empty string when it can. A key the agent holds can be, whatever its
+// passphrase, since the agent signs with it rather than goft.
+func unusableKey(path string, passphrase config.Secret, held agentKeys, withAgent bool) string {
 	pem, err := os.ReadFile(path)
 	if err != nil {
 		return err.Error()
+	}
+	if held.holds(publicHalf(path, pem)) {
+		return ""
 	}
 	_, err = parseKey(pem, passphrase)
 	var locked *ssh.PassphraseMissingError
 	switch {
 	case err == nil:
 		return ""
+	case errors.As(err, &locked) && withAgent:
+		return "it is passphrase protected, private_key_passphrase is not set, and the ssh-agent does not hold it"
 	case errors.As(err, &locked):
 		return "it is passphrase protected and private_key_passphrase is not set"
 	default:

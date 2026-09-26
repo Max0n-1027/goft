@@ -5,6 +5,7 @@
 - [ログを1行ずつ読む](log-example-ja.md) — 実際のログを、info と debug の両方でレコードごとに解説
 - [ローカルのディレクトリ同士でコピーする](local-copy-ja.md) — `protocol: local`、起動前の検証、`cp` との使い分け
 - [画面に出る内容](console-output-ja.md) — `goft test`・`--dry-run`・転送、そして2つの出力の分け方
+- [ssh-agent で認証する](ssh-agent-ja.md) — エージェントの探し方、出す鍵とその順番、サービスとして動かすジョブ
 
 これらのページの例はすべて、[cmd/logsample_test.go](../cmd/logsample_test.go) のテストが
 実サーバー（sftp）に対して実行した結果を採取したものです。書き換えているのはパス・ホスト名・ポートだけです。

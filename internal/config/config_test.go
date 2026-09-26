@@ -537,3 +537,41 @@ remote:
 		t.Errorf("Validate() = %v, want a negative io_timeout refused", err)
 	}
 }
+
+func TestTheSSHAgentIsOnUnlessTurnedOff(t *testing.T) {
+	p := writeConfig(t, `
+local:
+  path: `+t.TempDir()+`
+remote:
+  protocol: sftp
+  host: example
+  path: /upload
+`)
+	cfg, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Remote.SSHAgentEnabled() || cfg.Remote.SSHAgent != "" {
+		t.Errorf("use_ssh_agent = %v, ssh_agent = %q; want the agent used, found as ssh finds it",
+			cfg.Remote.SSHAgentEnabled(), cfg.Remote.SSHAgent)
+	}
+
+	p = writeConfig(t, `
+local:
+  path: `+t.TempDir()+`
+remote:
+  protocol: sftp
+  host: example
+  path: /upload
+  use_ssh_agent: false
+  ssh_agent: /run/agent.sock
+`)
+	cfg, err = Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.SSHAgentEnabled() || cfg.Remote.SSHAgent != "/run/agent.sock" {
+		t.Errorf("use_ssh_agent = %v, ssh_agent = %q; want both read as written",
+			cfg.Remote.SSHAgentEnabled(), cfg.Remote.SSHAgent)
+	}
+}

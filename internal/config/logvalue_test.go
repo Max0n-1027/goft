@@ -109,3 +109,24 @@ func TestConfigRecordIncludesDefaultsThatWereNeverWritten(t *testing.T) {
 		t.Errorf("retry.max_attempts = %v, want the default recorded", retry["max_attempts"])
 	}
 }
+
+func TestConfigRecordShowsTheSSHAgentSettings(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	remote := record(t, cfg)["remote"].(map[string]any)
+	if _, ok := remote["use_ssh_agent"]; ok {
+		t.Error("use_ssh_agent should appear only when the agent was turned off")
+	}
+
+	off := false
+	cfg.Remote.UseSSHAgent = &off
+	cfg.Remote.SSHAgent = `\\.\pipe\openssh-ssh-agent`
+	remote = record(t, cfg)["remote"].(map[string]any)
+	if remote["use_ssh_agent"] != false {
+		t.Errorf("use_ssh_agent = %v, want false recorded", remote["use_ssh_agent"])
+	}
+	// A pipe is not a file, so it is recorded as written rather than made
+	// absolute against the working directory.
+	if remote["ssh_agent"] != `\\.\pipe\openssh-ssh-agent` {
+		t.Errorf("ssh_agent = %v, want it recorded as written", remote["ssh_agent"])
+	}
+}

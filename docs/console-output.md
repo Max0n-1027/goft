@@ -31,8 +31,9 @@ send (write)  writable                                           OK
 
 The `resolve` lines are the useful part when a job connects to the wrong place:
 each names the value that will be used and where it came from — `yaml`,
-`ssh_config`, `netrc`, `credential_manager` or `default`. Secrets are reported
-as set, never printed.
+`ssh_config`, `netrc`, `credential_manager`, `env` or `default`. Secrets are
+reported as set, never printed. `env` is the ssh-agent found through
+`SSH_AUTH_SOCK`; [Authenticating with ssh-agent](ssh-agent.md) covers that line.
 
 Both directions are checked and reported separately, because a read-only account
 that can only `recv` is a legitimate setup: the exit status is 2 only when

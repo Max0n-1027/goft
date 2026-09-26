@@ -226,7 +226,7 @@ the connection stalled: nothing moved for 5m0s, so the connection was dropped (.
 It measures silence rather than duration, so a transfer that keeps moving is
 never cut off however long it takes. Opening a connection has its own limit,
 `remote.connect_timeout` (30 seconds), covering the handshake and the login as
-well as the TCP connection.
+well as the TCP connection, and for sftp the questions put to ssh-agent.
 
 One file failing does not stop the cycle. The others carry on, the summary
 counts the failures, and `send`/`recv` exit 1 — as opposed to exit 2, which

@@ -85,7 +85,10 @@ Nothing needs to be written in plain text:
   `${...}` form is recognised: a `$` on its own is an ordinary character, so a
   password may contain one, and a variable named in a comment is ignored.
 - **sftp** fills in anything you leave out from `~/.ssh/config`, including
-  `HostName`, `Port`, `User`, `IdentityFile` and `UserKnownHostsFile`.
+  `HostName`, `Port`, `User`, `IdentityFile`, `UserKnownHostsFile` and
+  `IdentityAgent`, and takes keys from ssh-agent as `ssh` does, so a key loaded
+  with `ssh-add` needs no passphrase anywhere in the job. See
+  [Authenticating with ssh-agent](docs/ssh-agent.md).
 - **ftp** fills in `user` and `password` from `~/.netrc`, or
   `%USERPROFILE%\.netrc` on Windows.
 - **smb** has no file of its own; give it `user`, `password` and `share`.
@@ -120,16 +123,26 @@ is skipped with a warning — none of its settings apply, while the other defaul
 file still does; a file named by `ssh_config_file` is an error instead.
 `ProxyJump` and `ProxyCommand` are not supported, and are reported as warnings
 rather than applied silently. Put the settings you need directly in the job file
-instead. ssh-agent is not used;
-supply the key with `private_key`, and its passphrase with
-`private_key_passphrase` if it has one.
+instead.
+
+ssh-agent is found as `ssh` finds it: `ssh_agent` in the job, then
+`IdentityAgent` in ssh_config, then `SSH_AUTH_SOCK`, then on Windows the pipe of
+the OpenSSH Authentication Agent service. Keys are offered in the order OpenSSH
+offers them — the agent's copy of each key file it holds, the agent's other
+keys, then key files it does not hold — and a password only after all of them.
+`use_ssh_agent: false` leaves the agent out. An agent the job, ssh_config or
+`SSH_AUTH_SOCK` points at but that cannot be reached is reported as a warning,
+and the job carries on without it.
 
 Keys goft finds for itself — `IdentityFile` in ssh_config, or
 `~/.ssh/id_ed25519` and `~/.ssh/id_rsa` — are offered only when they can be
-used as they stand. One that is passphrase protected while no
-`private_key_passphrase` is set is skipped with a warning, so the passphrase on
-a person's own key does not stand in the way of a job that authenticates by
-password. A key named by `private_key` is always offered, and failing to unlock
+used as they stand, or the agent holds them. One that is passphrase protected
+while no `private_key_passphrase` is set and the agent does not hold it is
+skipped with a warning, so the passphrase on a person's own key does not stand
+in the way of a job that authenticates by password. A key named by
+`private_key` is always offered, and it is the only key offered: the agent's
+other keys are left out, as `IdentitiesOnly yes` in ssh_config also leaves them
+out. If the agent holds it, no passphrase is needed; if not, failing to unlock
 it is an error.
 
 `StrictHostKeyChecking` in ssh_config is honoured, with a warning either way.
@@ -267,9 +280,9 @@ can. When one cycle finds both, neither is sent and both are recorded as
 failed: sending them would keep only one, report both as delivered, and with
 `post_action: delete` remove both sources.
 
-**A connection that goes quiet is given up on.** Opening one — the TCP
-connection, the handshake, the login and, for SMB, mounting the share — has to
-finish within `remote.connect_timeout` (30 seconds by default). Once open, a
+**A connection that goes quiet is given up on.** Opening one — for sftp asking
+ssh-agent for its keys, then the TCP connection, the handshake, the login and,
+for SMB, mounting the share — has to finish within `remote.connect_timeout` (30 seconds by default). Once open, a
 connection that moves no data for `remote.io_timeout` (5 minutes) while
 something is waiting on it is dropped, and the file is tried again over a new
 one. That measures silence, not duration: a large file that keeps moving is
@@ -345,6 +358,10 @@ built only on Windows. Going the other way, a test whose expectations are those
 of a POSIX file system calls `requirePOSIX` and says why, so it reports as
 skipped rather than failing on Windows; each of those has a Windows counterpart
 asserting what the same code does there instead.
+
+The ssh-agent tests there serve the agent protocol on a named pipe of their
+own, the way the OpenSSH Authentication Agent service does, so they need no
+agent to be running.
 
 One test is opt-in, because it writes to the credential store of whoever runs
 it. It registers an entry under a host no job would use and removes it again:
@@ -449,6 +466,7 @@ from real runs:
 
 - [What gets transferred](docs/file-selection.md) — names, settling, the size cap
 - [Copying between two local directories](docs/local-copy.md) — `protocol: local`
+- [Authenticating with ssh-agent](docs/ssh-agent.md) — where the agent is found, which keys are offered, running as a service
 - [The life of one file](docs/transfer-lifecycle.md) — temporary name, verification, rename, post-transfer actions, retries
 - [A log, line by line](docs/log-example.md) — a real log explained record by record
 - [What a run looks like on screen](docs/console-output.md) — `goft test`, `--dry-run`, a transfer

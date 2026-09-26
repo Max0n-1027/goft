@@ -26,8 +26,9 @@ send (write)  writable                                           OK
 ```
 
 ジョブが意図しない場所に繋がっているときに効くのが `resolve` の行です。実際に使われる値と、その出所
-（`yaml` / `ssh_config` / `netrc` / `credential_manager` / `default`）が並びます。
-秘密情報は「設定されている」ことだけが示され、値は表示されません。
+（`yaml` / `ssh_config` / `netrc` / `credential_manager` / `env` / `default`）が並びます。
+秘密情報は「設定されている」ことだけが示され、値は表示されません。`env` は `SSH_AUTH_SOCK` で
+見つけた ssh-agent です。その行については [ssh-agent で認証する](ssh-agent-ja.md) で説明しています。
 
 両方向を別々に確認して報告します。読み取り専用のアカウントで `recv` だけ運用するのは正当な構成だからです。
 終了コードが 2 になるのは両方向とも失敗したときだけです。転送先のディレクトリがまだ無い場合もエラーにはならず、

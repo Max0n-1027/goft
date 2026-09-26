@@ -36,11 +36,12 @@ remote:
   # wins.
   # port: 22
   # user: uploader
-  # private_key: ~/.ssh/id_ed25519            # always offered; failing to unlock it is an error
-  # private_key_passphrase: ${GOFT_SSH_PASSPHRASE}
+  # private_key: ~/.ssh/id_ed25519            # the only key offered; failing to unlock it is an error
+  # private_key_passphrase: ${GOFT_SSH_PASSPHRASE}   # not needed when ssh-agent holds the key
   # Keys found without being named here (ssh_config's IdentityFile, or
   # ~/.ssh/id_ed25519 and id_rsa) are skipped with a warning when they need a
-  # passphrase that is not given, so they never block password authentication.
+  # passphrase that is not given and ssh-agent does not hold them, so they
+  # never block password authentication.
   # password: ${GOFT_SFTP_PASSWORD}
   # known_hosts: ~/.ssh/known_hosts
   # insecure_skip_host_key_check: false
@@ -50,6 +51,12 @@ remote:
 
   # use_ssh_config: true                    # sftp: false stops ~/.ssh/config being read
   # ssh_config_file: /etc/goft/ssh_config   # sftp: use this file instead of the usual search
+  # sftp also takes keys from ssh-agent, found as ssh finds it: IdentityAgent
+  # in ssh_config, then SSH_AUTH_SOCK, then on Windows the OpenSSH
+  # Authentication Agent service. Naming private_key, or IdentitiesOnly yes in
+  # ssh_config, keeps the agent's other keys back.
+  # use_ssh_agent: true                     # sftp: false stops the agent being asked
+  # ssh_agent: /run/user/1000/ssh-agent.sock  # sftp: ask this agent; on Windows it may be a pipe
   # use_netrc: true                         # ftp: false stops the netrc lookup
   # netrc_file: /etc/goft/netrc             # ftp: use this file instead of the usual search
   # ftp reads ~/.netrc, or %USERPROFILE%\.netrc on Windows.
@@ -67,8 +74,9 @@ remote:
   # share: shared                           # smb only; do not repeat it in `path`
   # domain: WORKGROUP                       # smb only
 
-  # How long opening a connection may take, all of it: the TCP connection,
-  # the handshake, the login and, for smb, mounting the share. A server that
+  # How long opening a connection may take, all of it: for sftp asking
+  # ssh-agent for its keys, then the TCP connection, the handshake, the login
+  # and, for smb, mounting the share. A server that
   # accepts the connection and then says nothing is given up on after this,
   # and the attempt counts as a failure like any other.
   # connect_timeout: 30s

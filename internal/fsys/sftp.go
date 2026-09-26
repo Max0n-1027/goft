@@ -30,17 +30,30 @@ type sftpFS struct {
 }
 
 func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
-	res, err := resolveSFTP(r)
+	// Everything up to a usable connection shares one deadline, the agent and
+	// the TCP connection included. A dial timeout alone covers only the
+	// latter, and a server that accepts it and then never starts the handshake
+	// held the job there for good.
+	timeout := r.ConnectTimeoutOrDefault()
+	deadline := time.Now().Add(timeout)
+
+	res, err := resolveSFTPBy(r, deadline)
 	if err != nil {
 		return nil, err
 	}
 
-	auths, err := sftpAuths(res)
+	agentSigners, closeAgent, err := openAgent(res.Agent, deadline)
+	if err != nil {
+		return nil, err
+	}
+	defer closeAgent()
+
+	auths, err := sftpAuths(res, agentSigners)
 	if err != nil {
 		return nil, err
 	}
 	if len(auths) == 0 {
-		return nil, errors.New("no sftp authentication available: set remote.private_key or remote.password, or provide an IdentityFile in ssh_config")
+		return nil, errors.New("no sftp authentication available: set remote.private_key or remote.password, provide an IdentityFile in ssh_config, or load a key into ssh-agent")
 	}
 
 	hostKey, err := hostKeyCallback(res)
@@ -49,12 +62,6 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
-	// Everything up to a usable connection shares one deadline, the TCP
-	// connection included. A dial timeout alone covers only that, and a server
-	// that accepts it and then never starts the handshake held the job there
-	// for good.
-	timeout := r.ConnectTimeoutOrDefault()
-	deadline := time.Now().Add(timeout)
 	d := net.Dialer{Deadline: deadline}
 	netConn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -89,22 +96,13 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 	}, nil
 }
 
-func sftpAuths(res *Resolved) ([]ssh.AuthMethod, error) {
+// sftpAuths lists the ways to authenticate, keys before a password as ssh
+// tries them.
+func sftpAuths(res *Resolved, agentSigners []ssh.Signer) ([]ssh.AuthMethod, error) {
 	var auths []ssh.AuthMethod
-	var signers []ssh.Signer
-
-	for _, keyPath := range res.KeyFiles {
-		pem, err := os.ReadFile(keyPath)
-		if err != nil {
-			// A key named by ssh_config but unreadable is not fatal on its own;
-			// another key or a password may still work.
-			continue
-		}
-		signer, err := parseKey(pem, res.Passphrase)
-		if err != nil {
-			return nil, fmt.Errorf("parse private key %s: %w", keyPath, err)
-		}
-		signers = append(signers, signer)
+	signers, err := offeredSigners(res, agentSigners)
+	if err != nil {
+		return nil, err
 	}
 	if len(signers) > 0 {
 		auths = append(auths, ssh.PublicKeys(signers...))
