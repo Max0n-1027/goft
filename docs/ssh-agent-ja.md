@@ -71,6 +71,41 @@ Unix ソケットか Windows の名前付きパイプで ssh-agent プロトコ�
 名前付きパイプでも待ち受けており、`pageant --openssh-config <ファイル>` でそのパイプを指す
 `IdentityAgent` 行を書き出せます。
 
+### Windows での扱い
+
+パイプは `ssh.exe` が自身のパイプを開くのと同じ方法で開きます。単に到達できること
+以上に、これには2つの意味があります。
+
+**エージェントにジョブの実行アカウントとして振る舞うことを許しません。** 名前付きパイプの
+サーバー側は通常、接続してきたクライアントになりすませます。そして
+`\\.\pipe\openssh-ssh-agent` という名前は予約されていません。OpenSSH Authentication
+Agent サービスが動いていないマシン（出荷時の状態）では、**どのプロセスでも先にその
+パイプを作ってエージェントとして扱われ得ます**。goft は識別レベルで接続を要求するため、
+向こう側のサーバーは「どのアカウントが尋ねているか」を確認できるだけで、それ以上は
+できません。トークンを使って何かを開くことはできません。名前を先取りしたプロセスには
+どの鍵が求められているかとどのホストへの署名かは分かりますが、鍵なしに署名はできない
+ままなので、残るのは実害のない部分だけです。
+
+**全インスタンスが使用中のパイプは空くまで待ちます。** 名前付きパイプは1インスタンスに
+つき1クライアントを扱い、エージェントは直前のインスタンスが取られてから次を作ります。
+そのため、その隙間に来たクライアントは待たされるのではなく「全インスタンスが使用中」と
+返されます。goft は解決時に1回、ワーカーごとに1回エージェントを開くので、まさにこの隙間に
+当たる集中が起きます。一瞬の競合で1周期を失うのは割に合いません。待ち時間は他の処理と
+同じく `connect_timeout` で上限が決まるため、インスタンスを永遠に空けないエージェントでも
+失うのは1回の接続試行だけです。
+
+Git Bash・MSYS・Cygwin のシェルが設定した `SSH_AUTH_SOCK` は、goft でも `ssh.exe` でも
+使えません。これらのエージェントは通常のファイルの中でエミュレートしたソケットで待ち受けており、
+接続方法を知っているのはそれら自身のライブラリだけです。Windows はこれを「ソケットがそもそも
+存在しない」場合と同じ文言で報告するため、goft は使えるエージェントの居場所を補って示します。
+
+```console
+warning  the ssh-agent at C:/…/ssh-AbC123/agent.4711 cannot be used, so none of its keys are offered: dial unix C:/…/agent.4711: connect: A socket operation encountered a dead network. (the agent of an MSYS or Cygwin shell listens on a socket Windows cannot connect to; the OpenSSH agent for Windows listens on \\.\pipe\openssh-ssh-agent)
+```
+
+`SSH_AUTH_SOCK` を消すか、`ssh_agent` でパイプを指定すれば、OpenSSH のエージェントが
+使われます。
+
 ## どの鍵をどの順番で出すか
 
 鍵は OpenSSH と同じ順番で出し、パスワードはすべての鍵の後に試します。
