@@ -89,9 +89,23 @@ func TestJoinAndDir(t *testing.T) {
 }
 
 func TestTempNameRoundTrip(t *testing.T) {
-	n := TempName("a.csv")
-	if !IsTempName(n) {
-		t.Errorf("IsTempName(%q) = false", n)
+	// Every attempt's name has to be recognisable as a temporary, or a leftover
+	// would be picked up as a file to transfer.
+	seen := map[string]bool{}
+	for attempt := 1; attempt <= 3; attempt++ {
+		n := TempName("a.csv", attempt)
+		if !IsTempName(n) {
+			t.Errorf("IsTempName(%q) = false", n)
+		}
+		if seen[n] {
+			t.Errorf("attempt %d reuses the name %q, which the attempt before it may still hold open", attempt, n)
+		}
+		seen[n] = true
+	}
+	// The first attempt's name is the documented leftover, the one the next run
+	// overwrites.
+	if got := TempName("a.csv", 1); got != "a.csv"+TempSuffix {
+		t.Errorf("TempName(a.csv, 1) = %q, want the plain suffix", got)
 	}
 	if IsTempName("a.csv") {
 		t.Error("an ordinary name must not look like a temporary one")

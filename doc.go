@@ -28,7 +28,9 @@ last file out of, and its parent if that leaves it empty; the sending root
 itself is never removed. A file
 therefore only appears under its real name on the receiving side once it is
 complete and verified; a process killed mid-transfer leaves nothing behind but
-a .goft.tmp file, which the next run overwrites.
+a .goft.tmp file, which the next run overwrites. A retry writes under a name of
+its own, <name>.2.goft.tmp, since the attempt it replaces may still be in
+progress at the other end.
 
 Receiving onto Windows refuses a file whose name that platform would store as
 something else — a colon, which opens an NTFS alternate data stream, a trailing

@@ -29,6 +29,7 @@ package fsys
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path"
 	"strings"
@@ -107,8 +108,25 @@ const transferredFileMode = 0o644
 // never a transfer candidate, regardless of the configured filters.
 const TempSuffix = ".goft.tmp"
 
-// TempName returns the in-flight name for a destination file.
-func TempName(name string) string { return name + TempSuffix }
+// TempName returns the in-flight name for a destination file on attempt.
+//
+// The first attempt takes the plain suffix, which is the name a run that was
+// killed leaves behind and the next run overwrites. A later attempt takes a
+// name of its own, because the attempt before it may still be in progress at
+// the other end: a connection goft gave up on as stalled is one the server has
+// not necessarily noticed losing, and until it does, it holds the file the
+// attempt was writing. Two writers on one name is the one way the bytes that
+// arrive could be neither attempt's, and on Windows the server's handle stops
+// the name being renamed at all, so every attempt would fail where the first
+// one did.
+//
+// Every name still ends in [TempSuffix], so none is ever a transfer candidate.
+func TempName(name string, attempt int) string {
+	if attempt <= 1 {
+		return name + TempSuffix
+	}
+	return fmt.Sprintf("%s.%d%s", name, attempt, TempSuffix)
+}
 
 // IsTempName reports whether name is one of goft's in-flight files.
 func IsTempName(name string) bool { return strings.HasSuffix(name, TempSuffix) }

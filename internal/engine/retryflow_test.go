@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -244,5 +245,51 @@ func TestAConnectionRebuiltForARetryOutlivesTheWorkers(t *testing.T) {
 		if ctx.Err() != nil {
 			t.Errorf("connection %d was opened with a context that ended with the cycle's workers", i)
 		}
+	}
+}
+
+// recordingWrites notes the names written to the destination, in order.
+type recordingWrites struct {
+	fsys.FS
+	mu    sync.Mutex
+	names []string
+}
+
+func (w *recordingWrites) Write(ctx context.Context, name string, r io.Reader) (int64, error) {
+	w.mu.Lock()
+	w.names = append(w.names, name)
+	w.mu.Unlock()
+	return w.FS.Write(ctx, name, r)
+}
+
+// A retry must not write to the name the attempt before it used. goft gives up
+// on a stalled connection without the server necessarily having noticed losing
+// it, and until it does it holds the file that attempt was writing: two writers
+// on one name is the one way the bytes that arrive could be neither attempt's,
+// and on Windows the server's handle stops the name being renamed at all.
+func TestARetryWritesUnderAnotherName(t *testing.T) {
+	h := withRetry(newHarness(t), 3)
+	h.write(h.srcDir, "a.csv", "payload")
+	h.dst.FailOpTimes(fsys.OpWrite, errors.New("connection reset by peer"), 1)
+	rec := &recordingWrites{FS: h.dst}
+
+	runWith(t, h, h.src, rec)
+
+	if r := h.result("a.csv"); r.Outcome != Success || r.Attempts != 2 {
+		t.Fatalf("result = %+v, want it carried by the second attempt", r)
+	}
+	if len(rec.names) != 2 {
+		t.Fatalf("names written = %v, want one per attempt", rec.names)
+	}
+	if rec.names[0] == rec.names[1] {
+		t.Errorf("both attempts wrote %q, which the first may still hold open", rec.names[0])
+	}
+	for _, name := range rec.names {
+		if !fsys.IsTempName(name) {
+			t.Errorf("%q is not recognisable as a temporary, so a leftover would be transferred", name)
+		}
+	}
+	if got := h.read(h.dstDir, "a.csv"); got != "payload" {
+		t.Errorf("destination = %q, want the file published under its real name", got)
 	}
 }
