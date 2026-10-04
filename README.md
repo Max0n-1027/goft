@@ -27,7 +27,10 @@ For every file it finds on the sending side, goft:
 
 A file only ever appears under its real name on the receiving side once it is
 complete and verified. If the process is killed mid-transfer, all that is left
-behind is a `.goft.tmp` file, which the next run overwrites.
+behind is a `.goft.tmp` file, which the next run overwrites. A retry writes
+under a name of its own, `<name>.2.goft.tmp`, since the attempt it is replacing
+may still be in progress at the other end; those are overwritten the same way
+and never taken for files to transfer.
 
 ## Configuration
 

@@ -72,6 +72,16 @@ process mid-transfer and what is left behind is a `.goft.tmp` file, which the
 next run overwrites; the name a downstream system watches for is never a partial
 file.
 
+A retry writes to a name of its own — `<name>.2.goft.tmp`, then
+`<name>.3.goft.tmp` — rather than the one the attempt before it used. goft gives
+up on a stalled connection without the server having necessarily noticed losing
+it, and until it does, it still holds the file that attempt was writing. Two
+writers on one name is the one way the bytes that arrive could be neither
+attempt's, and on Windows the server's handle stops the name being renamed at
+all, so every attempt would fail exactly where the first one did. All of these
+names end in `.goft.tmp`, so none of them is ever picked up as a file to
+transfer.
+
 ## 4. Verified
 
 - `hash` (default) — the temporary file is read back from the destination and

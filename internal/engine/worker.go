@@ -28,7 +28,7 @@ import (
 // the cost of reconnecting is small next to re-sending a file.
 func (e *Engine) attempt(ctx context.Context, c *conn, t target, idx *destIndex) Result {
 	for n := 1; ; n++ {
-		res := e.tryOnce(ctx, c, t, idx)
+		res := e.tryOnce(ctx, c, t, idx, n)
 		res.Attempts = n
 
 		// A post-action failure is not a transfer failure: the file reached the
@@ -45,14 +45,14 @@ func (e *Engine) attempt(ctx context.Context, c *conn, t target, idx *destIndex)
 }
 
 // tryOnce makes sure there is a connection and performs one transfer.
-func (e *Engine) tryOnce(ctx context.Context, c *conn, t target, idx *destIndex) Result {
+func (e *Engine) tryOnce(ctx context.Context, c *conn, t target, idx *destIndex, attempt int) Result {
 	if err := c.ensure(); err != nil {
 		return Result{
 			Index: t.index, Total: t.total, Path: t.file.Path, Bytes: t.file.Size,
 			Outcome: Failed, Err: err,
 		}
 	}
-	return e.transfer(ctx, c, t, idx)
+	return e.transfer(ctx, c, t, idx, attempt)
 }
 
 // pause waits before the next attempt, and reports whether waiting completed
@@ -77,7 +77,7 @@ func (e *Engine) pause(ctx context.Context, attempt int, path string, cause erro
 
 // transfer handles one file end to end and never returns an error: a failure is
 // reported as a [Result] so that the rest of the cycle carries on.
-func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex) Result {
+func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex, attempt int) Result {
 	start := e.now()
 	res := Result{Index: t.index, Total: t.total, Path: t.file.Path, Bytes: t.file.Size}
 	finish := func(r Result) Result {
@@ -133,7 +133,7 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 		return finish(res)
 	}
 
-	tmp := fsys.TempName(name)
+	tmp := fsys.TempName(name, attempt)
 	sent, srcHash, err := e.upload(ctx, c, name, tmp)
 	if err != nil {
 		e.discard(ctx, c.dst, tmp)
