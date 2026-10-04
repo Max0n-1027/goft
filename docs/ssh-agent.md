@@ -74,6 +74,44 @@ named pipe works. Pageant, for one, listens on a named pipe as well as its older
 window-message interface; `pageant --openssh-config <file>` writes the
 `IdentityAgent` line that points at it.
 
+### On Windows
+
+The pipe is opened the way `ssh.exe` opens its own, which matters twice over
+beyond reaching it at all.
+
+**The agent is not allowed to act as the account running the job.** The server
+at the far end of a named pipe may normally impersonate the client that
+connects to it, and `\\.\pipe\openssh-ssh-agent` is not a reserved name: on a
+machine where the OpenSSH Authentication Agent service is not running — the
+state it ships in — any process can create that pipe first and be taken for the
+agent. goft asks for the connection at the identification level, so a server on
+the other end can see which account is asking and nothing more; it cannot use
+the token to open anything. A process that squatted the name still learns which
+keys are wanted and which host is being signed for, and still cannot sign
+without the key, so what is left to it is the part that does not matter.
+
+**A pipe whose every instance is in use is waited for.** A named pipe serves
+one client per instance and the agent creates the next only once the last has
+been taken, so a client arriving in that gap is told every instance is busy
+rather than asked to wait. goft opens the agent once while resolving and once
+per worker, which is exactly the burst that lands in it, and a cycle lost to a
+moment's contention would be a poor trade. The waiting is bounded by
+`connect_timeout` like the rest of the attempt, so an agent that never frees an
+instance costs one connection attempt rather than the run.
+
+`SSH_AUTH_SOCK` left behind by a Git Bash, MSYS or Cygwin shell does not work,
+here or with `ssh.exe`: those agents listen on a socket emulated inside an
+ordinary file, which only their own libraries know how to connect to. Windows
+reports that with the same words it uses for a socket that is not there at all,
+so goft adds where the agent it can use would be:
+
+```console
+warning  the ssh-agent at C:/…/ssh-AbC123/agent.4711 cannot be used, so none of its keys are offered: dial unix C:/…/agent.4711: connect: A socket operation encountered a dead network. (the agent of an MSYS or Cygwin shell listens on a socket Windows cannot connect to; the OpenSSH agent for Windows listens on \\.\pipe\openssh-ssh-agent)
+```
+
+Clear `SSH_AUTH_SOCK`, or point `ssh_agent` at the pipe, and the OpenSSH agent
+is used instead.
+
 ## Which keys are offered, in what order
 
 Keys are offered in the order OpenSSH offers them, and a password is tried

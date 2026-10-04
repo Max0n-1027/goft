@@ -361,7 +361,12 @@ asserting what the same code does there instead.
 
 The ssh-agent tests there serve the agent protocol on a named pipe of their
 own, the way the OpenSSH Authentication Agent service does, so they need no
-agent to be running.
+agent to be running. Those cover how the pipe is opened as well as what comes
+over it: that a pipe with no free instance is waited for and still gives up at
+the deadline, and that the server on the far end is handed a token it can
+identify the job's account with but not act as — which a pipe server can
+otherwise do, and the agent's pipe name is there for the taking on a machine
+where the service is not running.
 
 One test is opt-in, because it writes to the credential store of whoever runs
 it. It registers an entry under a host no job would use and removes it again:
