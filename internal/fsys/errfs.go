@@ -29,7 +29,7 @@ type ErrFS struct {
 	counts   map[Op]int
 	fail     map[Op]error
 	failLeft map[Op]int
-	// StatResult overrides Stat for a given name, so a test can simulate a file
+	// statOverride replaces Stat for a given name, so a test can simulate a file
 	// appearing on the destination in the middle of a cycle.
 	statOverride map[string]func() (FileInfo, error)
 }

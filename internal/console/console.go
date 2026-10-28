@@ -57,7 +57,8 @@ type Options struct {
 	Remote string
 
 	// Buffered holds a cycle's output back until the cycle ends, and drops it
-	// if nothing was transferred. Set it for serve, not for one-shot runs.
+	// if nothing was transferred and nothing needs attention. Set it for
+	// serve, not for one-shot runs.
 	Buffered bool
 }
 

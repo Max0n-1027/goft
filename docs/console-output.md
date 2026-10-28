@@ -3,8 +3,9 @@
 goft writes two things: a JSON Lines log, which is the record, and a human
 readable account on stdout for whoever is watching. This page is the second one.
 Every block below is captured from a real run of the test in
-[cmd/logsample_test.go](../cmd/logsample_test.go); only paths, the host and the
-port have been rewritten.
+[cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go), except the run stopped part
+way, which was stopped by hand; only paths, the host, the port and the user name
+have been rewritten.
 
 Single runs (`send`, `recv`) print it by default. `serve` does not, since a
 watcher is usually left alone with its log. `--console` and `--no-console`

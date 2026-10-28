@@ -29,7 +29,8 @@ var ErrSourceChanged = i18n.Errorf("the source changed while it was being transf
 //   - the file or directory is not there,
 //   - the credentials do not allow it,
 //   - the destination already holds a file the action refuses to replace,
-//   - the receiving file system cannot hold a file under that name,
+//   - the receiving file system cannot hold a file under that name, or would
+//     hold two of this cycle's files under one,
 //   - the server gave a 5xx reply, which FTP defines as a permanent negative,
 //   - the source changed while it was being sent, which settling on a later
 //     cycle deals with rather than an immediate retry.

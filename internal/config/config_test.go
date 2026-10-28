@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -573,5 +574,33 @@ remote:
 	if cfg.Remote.SSHAgentEnabled() || cfg.Remote.SSHAgent != "/run/agent.sock" {
 		t.Errorf("use_ssh_agent = %v, ssh_agent = %q; want both read as written",
 			cfg.Remote.SSHAgentEnabled(), cfg.Remote.SSHAgent)
+	}
+}
+
+func TestCaseInsensitiveIsLeftUnsetUnlessWritten(t *testing.T) {
+	base := `
+local:
+  path: ` + t.TempDir() + `
+remote:
+  protocol: sftp
+  host: example
+  path: /upload
+`
+	cfg, err := Load(writeConfig(t, base))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.CaseInsensitive != nil {
+		t.Errorf("case_insensitive = %v, want it unset so the protocol decides", *cfg.Remote.CaseInsensitive)
+	}
+
+	for _, value := range []bool{true, false} {
+		cfg, err := Load(writeConfig(t, base+"  case_insensitive: "+strconv.FormatBool(value)+"\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.Remote.CaseInsensitive == nil || *cfg.Remote.CaseInsensitive != value {
+			t.Errorf("case_insensitive: %v was read as %v", value, cfg.Remote.CaseInsensitive)
+		}
 	}
 }

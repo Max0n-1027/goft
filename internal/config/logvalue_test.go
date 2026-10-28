@@ -130,3 +130,17 @@ func TestConfigRecordShowsTheSSHAgentSettings(t *testing.T) {
 		t.Errorf("ssh_agent = %v, want it recorded as written", remote["ssh_agent"])
 	}
 }
+
+func TestConfigRecordShowsADeclaredCase(t *testing.T) {
+	cfg := validConfig(t.TempDir())
+	remote := record(t, cfg)["remote"].(map[string]any)
+	if _, ok := remote["case_insensitive"]; ok {
+		t.Error("case_insensitive should appear only when it was set")
+	}
+	off := false
+	cfg.Remote.CaseInsensitive = &off
+	remote = record(t, cfg)["remote"].(map[string]any)
+	if remote["case_insensitive"] != false {
+		t.Errorf("case_insensitive = %v, want false recorded", remote["case_insensitive"])
+	}
+}

@@ -24,8 +24,9 @@ type Options struct {
 	Config    *config.Config
 	Direction config.Direction
 
-	// NewSrc and NewDst open one connection each. They are called once per
-	// worker, so the number of live connections never exceeds workers.
+	// NewSrc and NewDst open one connection each. A cycle calls them once per
+	// worker, and again to rebuild a worker's connection before a retry, so
+	// the number of live connections never exceeds workers.
 	NewSrc func(context.Context) (fsys.FS, error)
 	NewDst func(context.Context) (fsys.FS, error)
 
@@ -288,7 +289,9 @@ func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	return e.finishCycle(start, s), nil
 }
 
-// finishCycle records the summary of a cycle that ran to the end.
+// finishCycle records the summary of a cycle that ran to the end, or of one
+// that was asked to stop part way, which is logged as interrupted with the
+// count of files it never started.
 func (e *Engine) finishCycle(start time.Time, s Summary) Summary {
 	s.Elapsed = e.now().Sub(start)
 	summary := []any{
@@ -573,11 +576,11 @@ func (e *Engine) collect(ctx context.Context, src fsys.FS) ([]target, error) {
 // warn and later ones at debug, so a file that will never be sent does not
 // repeat the same warning on every poll.
 //
-// The stabilizer's "changed since the last cycle" flag cannot answer this. A
-// settled file never has it: it is not settled the first time it is seen, and
-// by the time it settles it is no longer new. Keying the suppression off that
-// flag made the warning unreachable for any job with a stable_duration, which
-// is every job that is not in a test.
+// Whether the stabilizer has just seen the file for the first time cannot
+// answer this. A settled file never has been: it is not settled the first time
+// it is seen, and by the time it settles it is no longer new. Keying the
+// suppression off that made the warning unreachable for any job with a
+// stable_duration, which is every job that is not in a test.
 func (e *Engine) noteOversize(f scan.File) bool {
 	prev, reported := e.oversize[f.Path]
 	e.oversize[f.Path] = f

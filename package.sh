@@ -13,9 +13,9 @@
 #   dist/goft_v0.1.0_windows_amd64.zip
 #   dist/SHA256SUMS
 #
-# An archive holds the binary, both READMEs, the licence and the annotated
-# example configuration, so an unpacked release is usable without the
-# repository.
+# An archive holds the binary, both READMEs, the pages under docs/ that they
+# link to, the licence and the annotated example configuration, so an unpacked
+# release is usable without the repository.
 #
 # Environment:
 #   VERSION            version stamped into the binaries and the archive names
@@ -34,7 +34,7 @@ set -euo pipefail
 readonly BINARY=goft
 readonly OUT_DIR=${OUT_DIR:-build}
 readonly DIST_DIR=${DIST_DIR:-dist}
-readonly EXTRA_FILES=(README.md README-ja.md LICENSE goft.example.yaml)
+readonly EXTRA_FILES=(README.md README-ja.md docs LICENSE goft.example.yaml)
 
 usage() {
     awk 'NR < 3 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0"
@@ -75,7 +75,7 @@ archive() {
 
     mkdir -p "$stage"
     cp "$binary" "$stage/"
-    cp "${EXTRA_FILES[@]}" "$stage/"
+    cp -R "${EXTRA_FILES[@]}" "$stage/"
     find "$stage" -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
 
     if [ "$os" = windows ]; then

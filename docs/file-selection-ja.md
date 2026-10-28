@@ -2,7 +2,7 @@
 
 各周期は送り側の一覧取得から始まり、どのファイルが対象になるかを決めます。
 このページはその判断を、goft が実際に行う順番で説明します。
-引用しているのは [cmd/logsample_test.go](../cmd/logsample_test.go) のテストを走らせた実際の出力です。
+引用しているのは [cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go) のテストを走らせた実際の出力です。
 
 ```yaml
 recursive: true
@@ -44,9 +44,12 @@ goft 自身の転送中ファイル（`*.goft.tmp`）は設定に関わらず常
 書きかけのファイルが「安定している」ように見えてしまいます。
 
 単発の `send` / `recv` には比較対象になる前周期がありません。そのため `stable_duration` の間隔をあけて2回読み取り、
-その間に変化しなかったものを転送します。何も無いディレクトリに対する単発実行でも数秒かかるのはこのためです。
+その間に変化しなかったものを転送します。対象になりうるファイルがあれば、単発実行に少なくとも `stable_duration` かかるのはこのためです。
+空のディレクトリや `stable_duration: 0` では2回目の読み取りはしません。
 
-`serve` では、新しいファイルが拾われるまでの最短時間は `max(poll_interval, stable_duration)` になります。
+`serve` では、前の周期が終わってから `poll_interval` ごとに走査し、`stable_duration` のあいだ変化していないことを確認できた最初の走査でファイルを拾います。
+そのため、ファイルの変化が止まってから、次の走査までと、`stable_duration` を `poll_interval` 単位に切り上げた時間だけ待つことになります。
+既定値（`poll_interval: 5s`、`stable_duration: 3s`）では 5〜10 秒です。
 
 **FTP の更新時刻は粗いことがあります。** FTP には stat 相当のコマンドがなく、更新時刻はサーバーが対応していれば `MLST`、
 そうでなければディレクトリ一覧から取得します。後者は分単位の精度しかないことがあります。
@@ -55,7 +58,7 @@ FTP サーバーから `recv` する場合は `stable_duration` に余裕を持�
 デバッグレベルでは、走査で何件見つかり、そのうち何件が安定していたかが記録されます。
 
 ```jsonl
-{"time":"2026-08-25T21:35:54.7474434+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"scan","found":4,"settled":4}
+{"time":"2026-10-29T01:58:40.592979021+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"scan","found":4,"settled":4}
 ```
 
 ## 4. サイズ上限
@@ -64,7 +67,7 @@ FTP サーバーから `recv` する場合は `stable_duration` に余裕を持�
 上限を超えたファイルはスキップされ、その周期の他のファイルはそのまま処理されます。
 
 ```jsonl
-{"time":"2026-08-25T21:35:36.554360166+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
 ```
 
 警告はプロセスごとにファイル1つにつき1回だけ書かれ、以降の周期では同じ内容が debug に記録されます。
@@ -78,7 +81,7 @@ FTP サーバーから `recv` する場合は `stable_duration` に余裕を持�
 
 ## 4段階を通った結果
 
-dry-run には、4つの段階を通り抜けたファイルがそのまま並びます。
+dry-run には、最初の3つの段階を通り抜けたファイルが並びます。
 
 ```console
 goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  （ドライラン）
@@ -89,8 +92,8 @@ goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  �
 4 件、3.4 MiB を転送する予定です（何も送っていません）
 ```
 
-ここで `archive.dat` が一覧に出ているのは、dry-run が「走査で見つかったもの」を報告するからです。
-サイズ上限は転送時の判断で、実際に転送すればスキップとして記録されます。
+`archive.dat` は上限を超えていますが一覧に出ています。サイズ上限は転送する時点で判断するもので、
+実際に転送すればスキップとして記録されます。
 
 ## 毎周期見続けられるファイル
 

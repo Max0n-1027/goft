@@ -146,8 +146,8 @@ func Join(elems ...string) string {
 	return path.Join(parts...)
 }
 
-// Segments splits a rooted relative path into its parts, dropping empty ones.
-// Protocols that can only create one directory at a time walk it.
+// Segments splits a rooted relative path into its parts, dropping empty ones,
+// which is also how deep it is.
 func Segments(p string) []string {
 	var out []string
 	for _, part := range strings.Split(p, "/") {

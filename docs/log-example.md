@@ -1,10 +1,10 @@
 # A log, line by line
 
 This is a real log, not an illustration. It comes from one run of the test in
-[cmd/logsample_test.go](../cmd/logsample_test.go), against a live sftp server,
-and it is quoted here exactly as goft wrote it. Only the paths, the host and the
-port have been rewritten, so that a throwaway temporary directory reads as a job
-someone might actually run.
+[cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go), against a real sftp server
+the test starts, and it is quoted here exactly as goft wrote it. Only the paths,
+the host, the port and the user name have been rewritten, so that a throwaway
+temporary directory reads as a job someone might actually run.
 
 The job sends four files. Two are ordinary, one is larger than the size cap, and
 one sits in a directory the account cannot write to:
@@ -39,7 +39,7 @@ having to be found and dated:
 
 ```json
 {
-  "time": "2026-08-25T21:35:33.517911157+09:00",
+  "time": "2026-10-29T01:58:19.553460649+09:00",
   "level": "INFO",
   "msg": "starting",
   "job": "invoice-upload",
@@ -59,7 +59,9 @@ having to be found and dated:
       "user": "uploader",
       "password": "REDACTED",
       "known_hosts": "/home/svc-transfer/.ssh/known_hosts",
-      "use_ssh_config": false
+      "use_ssh_config": false,
+      "connect_timeout": "30s",
+      "io_timeout": "5m0s"
     },
     "recursive": true,
     "include": [
@@ -99,11 +101,11 @@ having to be found and dated:
 Then the files, one record each, and the cycle they belonged to:
 
 ```jsonl
-{"time":"2026-08-25T21:35:36.554360166+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
-{"time":"2026-08-25T21:35:36.561189297+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":6,"verify":"hash","result":"success","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
-{"time":"2026-08-25T21:35:36.561935166+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":7,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
-{"time":"2026-08-25T21:35:36.563337239+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":2,"verify":"hash","result":"failed","error":"permission denied"}
-{"time":"2026-08-25T21:35:36.563447555+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"summary","files":4,"succeeded":2,"skipped":1,"failed":1,"bytes":33,"duration_ms":3044}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.562050042+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"success","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
+{"time":"2026-10-29T01:58:22.561992625+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
+{"time":"2026-10-29T01:58:22.562222425+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"permission denied"}
+{"time":"2026-10-29T01:58:22.562234098+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"summary","files":4,"succeeded":2,"skipped":1,"failed":1,"bytes":33,"duration_ms":3008}
 ```
 
 Reading that: `archive.dat` was too large to send, which is a warning rather
@@ -124,11 +126,11 @@ weeks.
 ## The second pass, with everything already delivered
 
 ```jsonl
-{"time":"2026-08-25T21:35:39.602116798+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
-{"time":"2026-08-25T21:35:39.602367285+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
-{"time":"2026-08-25T21:35:39.60247795+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
-{"time":"2026-08-25T21:35:39.605613666+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":3,"verify":"hash","result":"failed","error":"permission denied"}
-{"time":"2026-08-25T21:35:39.605796156+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3037}
+{"time":"2026-10-29T01:58:25.564905414+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:25.568108976+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
+{"time":"2026-10-29T01:58:25.568094141+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
+{"time":"2026-10-29T01:58:25.568346532+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"permission denied"}
+{"time":"2026-10-29T01:58:25.568358707+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3005}
 ```
 
 `on_exists: skip` does exactly what it says: the file is not sent, and nothing
@@ -143,11 +145,11 @@ With `on_exists: overwrite` the destination is not clobbered blindly. The two
 sides are compared first, and a file that is already identical is left alone:
 
 ```jsonl
-{"time":"2026-08-25T21:35:42.645140415+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
-{"time":"2026-08-25T21:35:42.649116785+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":3,"verify":"hash","result":"skipped","reason":"identical","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
-{"time":"2026-08-25T21:35:42.64981559+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":3,"verify":"hash","result":"skipped","reason":"identical","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
-{"time":"2026-08-25T21:35:42.651905931+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":2,"verify":"hash","result":"failed","error":"permission denied"}
-{"time":"2026-08-25T21:35:42.652011532+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3040}
+{"time":"2026-10-29T01:58:28.571390046+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:28.575556337+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"skipped","reason":"identical","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
+{"time":"2026-10-29T01:58:28.575522231+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"skipped","reason":"identical","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
+{"time":"2026-10-29T01:58:28.575763174+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"permission denied"}
+{"time":"2026-10-29T01:58:28.575775+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3006}
 ```
 
 `reason` is `identical` rather than `already_exists`, and the hashes are
@@ -155,21 +157,33 @@ recorded: not sending needs its evidence as much as sending does.
 
 ## Retries, and a failure that stuck
 
-Here the destination name could not be replaced. The transfer itself worked —
-the hashes are there — but the rename into place kept failing:
+Here the destination name could not be replaced: a directory is in the way of
+the file. The transfer itself worked — the hashes are there — but the rename
+into place kept failing. This pass used `on_exists: overwrite` and
+`retry.interval: 1s`:
 
 ```jsonl
-{"time":"2026-08-25T21:35:48.694181956+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":2,"of":3,"retry_in_ms":1000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE)"}
-{"time":"2026-08-25T21:35:49.718238957+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":3,"of":3,"retry_in_ms":2000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE)"}
-{"time":"2026-08-25T21:35:51.740558027+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_05.csv","protocol":"sftp","bytes":17,"duration_ms":8,"verify":"hash","result":"failed","error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE)","hash_src":"b2d06a1f4fa13583","hash_dst":"b2d06a1f4fa13583","attempt":3}
-{"time":"2026-08-25T21:35:51.740695447+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"summary","files":1,"succeeded":0,"skipped":0,"failed":1,"bytes":0,"duration_ms":6077}
+{"time":"2026-10-29T01:58:34.585508388+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":2,"of":3,"retry_in_ms":1000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE) (could not clear the destination first: remove /upload/invoice/invoice_202608_05.csv: sftp: \"remove /upload/invoice/invoice_202608_05.csv: directory not empty\" (SSH_FX_FAILURE))"}
+{"time":"2026-10-29T01:58:35.588028566+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":3,"of":3,"retry_in_ms":2000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.2.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE) (could not clear the destination first: remove /upload/invoice/invoice_202608_05.csv: sftp: \"remove /upload/invoice/invoice_202608_05.csv: directory not empty\" (SSH_FX_FAILURE))"}
+{"time":"2026-10-29T01:58:37.590781209+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_05.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.3.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE) (could not clear the destination first: remove /upload/invoice/invoice_202608_05.csv: sftp: \"remove /upload/invoice/invoice_202608_05.csv: directory not empty\" (SSH_FX_FAILURE))","hash_src":"b2d06a1f4fa13583","hash_dst":"b2d06a1f4fa13583","attempt":3}
+{"time":"2026-10-29T01:58:37.590805908+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"summary","files":1,"succeeded":0,"skipped":0,"failed":1,"bytes":0,"duration_ms":6010}
 ```
 
 The retry records name the attempt (`attempt` of `of`) and how long the next one
-waits (`retry_in_ms`), which doubles: 1s, then 2s. When the attempts run out the
-result is a single `failed` record carrying `attempt`, so the log shows both that
-it was retried and how many times. The temporary file was removed; the
-destination was left as it was found.
+waits (`retry_in_ms`), which grows by `retry.backoff`: 1s, then 2s. When the
+attempts run out the result is a single `failed` record carrying `attempt`, so
+the log shows both that it was retried and how many times. The temporary file
+was removed each time; the destination was left as it was found.
+
+Each error carries two reasons. The server would not rename onto a name that
+was taken, so goft tried to clear the name first, and the server refused that
+too: `could not clear the destination first:` introduces the second refusal.
+Each attempt also wrote under a temporary name of its own — `.goft.tmp`, then
+`.2.goft.tmp`, then `.3.goft.tmp` — as [The life of one
+file](transfer-lifecycle.md#3-written-under-a-temporary-name) explains.
+
+The server answered with SFTP's generic `SSH_FX_FAILURE`, which says nothing
+about whether trying again could help, so goft tried again.
 
 Not every failure is retried. A dropped connection or a failed verification is;
 a missing file, a permission error or a 5xx reply is not, because the next
@@ -181,7 +195,7 @@ attempt would fail the same way. That is why the permission failure above has no
 After the settings record, which is the same as the one above:
 
 ```jsonl
-{"time":"2026-08-25T21:35:45.661033784+09:00","level":"ERROR","msg":"run failed","job":"invoice-upload","direction":"send","event":"lifecycle","error":"dial invoice-sftp:22: dial tcp 10.0.4.12:22: connect: connection refused"}
+{"time":"2026-10-29T01:58:31.579118232+09:00","level":"ERROR","msg":"run failed","job":"invoice-upload","direction":"send","event":"lifecycle","error":"dial invoice-sftp:22: dial tcp 10.0.4.12:22: connect: connection refused"}
 ```
 
 An unreachable server ends the run before any file is attempted, so there are no
@@ -195,27 +209,27 @@ files failed" (exit 1).
 one was resolved from:
 
 ```jsonl
-{"time":"2026-08-25T21:35:51.743764459+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"host","value":"invoice-sftp","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744010482+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"port","value":"22","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744042149+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"user","value":"uploader","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744061866+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"password","value":"REDACTED","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744079129+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"private_key","value":"/home/svc-transfer/.ssh/id_ed25519","source":"default"}
-{"time":"2026-08-25T21:35:51.74409743+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"known_hosts","value":"/home/svc-transfer/.ssh/known_hosts","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591500593+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"host","value":"invoice-sftp","source":"yaml"}
+{"time":"2026-10-29T01:58:37.59150647+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"port","value":"22","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591509101+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"user","value":"uploader","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591511153+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"password","value":"REDACTED","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591513114+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"private_key","value":"/home/svc-transfer/.ssh/id_ed25519","source":"default"}
+{"time":"2026-10-29T01:58:37.591515199+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"known_hosts","value":"/home/svc-transfer/.ssh/known_hosts","source":"yaml"}
 ```
 
 What the scan found, and how much of it had settled:
 
 ```jsonl
-{"time":"2026-08-25T21:35:54.7474434+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"scan","found":4,"settled":4}
+{"time":"2026-10-29T01:58:40.592979021+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"scan","found":4,"settled":4}
 ```
 
 And a record per step of each transfer, with its own `duration_ms`, so a slow
 run can be attributed to the part that is actually slow:
 
 ```jsonl
-{"time":"2026-08-25T21:35:54.781854799+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"transfer","step":"mkdir","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":0}
-{"time":"2026-08-25T21:35:54.784956443+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"transfer","step":"compare","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":2}
-{"time":"2026-08-25T21:35:54.785978073+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"transfer","step":"write","src":"/data/out/invoice/restricted/invoice_202608_03.csv","duration_ms":0,"error":"permission denied"}
+{"time":"2026-10-29T01:58:40.597366462+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"transfer","step":"mkdir","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":0}
+{"time":"2026-10-29T01:58:40.597579447+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"transfer","step":"compare","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":0}
+{"time":"2026-10-29T01:58:40.5976686+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"transfer","step":"write","src":"/data/out/invoice/restricted/invoice_202608_03.csv","duration_ms":0,"error":"permission denied"}
 ```
 
 A successful transfer also gains `rate_mibs` at this level. Skipped and failed
@@ -230,7 +244,7 @@ A file over `max_file_size_mb` is skipped with `reason: size_limit`, at warn
 level:
 
 ```jsonl
-{"time":"2026-08-25T21:35:36.554360166+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
 ```
 
 The warning is written once per file per process, and later cycles record the
@@ -250,7 +264,7 @@ The log is JSON Lines, so `jq` reads it a record at a time:
 
 ```bash
 # everything one cycle did
-jq -c 'select(.cycle_id == "46466581-ab9f-4d57-bb5f-1c63aab9f97b")' invoice-upload.log
+jq -c 'select(.cycle_id == "ea701700-3c50-48d9-8cd1-f1b6ecabf70e")' invoice-upload.log
 
 # what failed, and why
 jq -r 'select(.result == "failed") | "\(.time) \(.src) \(.error)"' invoice-upload.log
