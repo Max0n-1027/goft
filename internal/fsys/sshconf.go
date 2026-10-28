@@ -2,7 +2,6 @@ package fsys
 
 import (
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"os/user"
@@ -15,6 +14,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 // sshLookup abstracts over the two ways ssh_config can be consulted: the
@@ -24,7 +24,7 @@ type sshLookup struct {
 	all func(key string) []string
 	// warnings explain default files that could not be read, so that their
 	// settings not applying is said out loud.
-	warnings []string
+	warnings []i18n.Message
 }
 
 func disabledLookup() sshLookup {
@@ -63,7 +63,7 @@ func newSSHLookup(r config.Remote) (sshLookup, error) {
 
 	var (
 		configs  []*ssh_config.Config
-		warnings []string
+		warnings []i18n.Message
 	)
 	for _, path := range defaultSSHConfigFiles() {
 		cfg, err := decodeSSHConfig(path)
@@ -71,7 +71,7 @@ func newSSHLookup(r config.Remote) (sshLookup, error) {
 		case errors.Is(err, fs.ErrNotExist):
 			continue
 		case err != nil:
-			warnings = append(warnings, fmt.Sprintf(
+			warnings = append(warnings, i18n.Msg(
 				"%v; none of its settings apply (only Match host and Match all are understood, so put what the job needs in the job file)", err))
 			continue
 		}
@@ -95,12 +95,12 @@ func defaultSSHConfigFiles() []string {
 func decodeSSHConfig(path string) (*ssh_config.Config, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open ssh_config %s: %w", path, err)
+		return nil, i18n.Errorf("open ssh_config %s: %w", path, err)
 	}
 	defer f.Close()
 	cfg, err := ssh_config.Decode(f)
 	if err != nil {
-		return nil, fmt.Errorf("parse ssh_config %s: %w", path, err)
+		return nil, i18n.Errorf("parse ssh_config %s: %w", path, err)
 	}
 	return cfg, nil
 }
@@ -166,8 +166,7 @@ func resolveSFTPBy(r config.Remote, deadline time.Time) (*Resolved, error) {
 
 	for _, key := range []string{"ProxyJump", "ProxyCommand"} {
 		if v, ok := look.get(key); ok {
-			res.Warnings = append(res.Warnings,
-				fmt.Sprintf("ssh_config %s %q is not supported; connecting directly", key, v))
+			res.warn(i18n.Msg("ssh_config %s %q is not supported; connecting directly", key, v))
 		}
 	}
 
@@ -194,7 +193,7 @@ func resolvePort(res *Resolved, r config.Remote, look sshLookup) error {
 	if v, ok := look.get("Port"); ok {
 		p, err := strconv.Atoi(strings.TrimSpace(v))
 		if err != nil {
-			return fmt.Errorf("ssh_config Port %q: %w", v, err)
+			return i18n.Errorf("ssh_config Port %q: %w", v, err)
 		}
 		res.Port = p
 		res.record("port", v, SourceSSHConfig)
@@ -286,8 +285,8 @@ func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string, he
 	}
 
 	for _, p := range candidates {
-		if why := unusableKey(p, res.Passphrase, held, res.Agent != ""); why != "" {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("skipping the key %s: %s", p, why))
+		if why := unusableKey(p, res.Passphrase, held, res.Agent != ""); why != nil {
+			res.warn(i18n.Msg("skipping the key %s: %v", p, why))
 			continue
 		}
 		res.KeyFiles = append(res.KeyFiles, p)
@@ -298,27 +297,27 @@ func resolveAuth(res *Resolved, r config.Remote, look sshLookup, home string, he
 }
 
 // unusableKey says why a key file cannot be used as things stand, or returns
-// an empty string when it can. A key the agent holds can be, whatever its
-// passphrase, since the agent signs with it rather than goft.
-func unusableKey(path string, passphrase config.Secret, held agentKeys, withAgent bool) string {
+// nil when it can. A key the agent holds can be, whatever its passphrase,
+// since the agent signs with it rather than goft.
+func unusableKey(path string, passphrase config.Secret, held agentKeys, withAgent bool) error {
 	pem, err := os.ReadFile(path)
 	if err != nil {
-		return err.Error()
+		return err
 	}
 	if held.holds(publicHalf(path, pem)) {
-		return ""
+		return nil
 	}
 	_, err = parseKey(pem, passphrase)
 	var locked *ssh.PassphraseMissingError
 	switch {
 	case err == nil:
-		return ""
+		return nil
 	case errors.As(err, &locked) && withAgent:
-		return "it is passphrase protected, private_key_passphrase is not set, and the ssh-agent does not hold it"
+		return i18n.Errorf("it is passphrase protected, private_key_passphrase is not set, and the ssh-agent does not hold it")
 	case errors.As(err, &locked):
-		return "it is passphrase protected and private_key_passphrase is not set"
+		return i18n.Errorf("it is passphrase protected and private_key_passphrase is not set")
 	default:
-		return err.Error()
+		return err
 	}
 }
 
@@ -380,13 +379,11 @@ func resolveHostKeyPolicy(res *Resolved, look sshLookup) {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "no", "off":
 		res.SkipHostKey = true
-		res.Warnings = append(res.Warnings,
-			fmt.Sprintf("ssh_config sets StrictHostKeyChecking %s: the host key will not be verified", v))
+		res.warn(i18n.Msg("ssh_config sets StrictHostKeyChecking %s: the host key will not be verified", v))
 	case "accept-new":
 		res.AcceptNewHostKeys = true
-		res.Warnings = append(res.Warnings,
-			fmt.Sprintf("ssh_config sets StrictHostKeyChecking %s: the key of a host not yet in %s will be accepted and recorded there; a changed key is still refused",
-				v, res.KnownHosts))
+		res.warn(i18n.Msg("ssh_config sets StrictHostKeyChecking %s: the key of a host not yet in %s will be accepted and recorded there; a changed key is still refused",
+			v, res.KnownHosts))
 	}
 }
 

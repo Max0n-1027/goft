@@ -16,6 +16,7 @@ import (
 	goftp "github.com/jlaffaye/ftp"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 type ftpFS struct {
@@ -34,7 +35,7 @@ func newFTP(ctx context.Context, r config.Remote) (FS, error) {
 		return nil, err
 	}
 	if res.User == "" || !res.Password.IsSet() {
-		return nil, fmt.Errorf("no ftp credentials for %s: set remote.user and remote.password, or add a machine entry to ~/.netrc", r.Host)
+		return nil, i18n.Errorf("no ftp credentials for %s: set remote.user and remote.password, or add a machine entry to ~/.netrc", r.Host)
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
@@ -67,14 +68,14 @@ func newFTP(ctx context.Context, r config.Remote) (FS, error) {
 	}
 	conn, err := goftp.Dial(addr, goftp.DialWithDialFunc(dial))
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	// Login negotiates features and switches the connection to binary mode
 	// (TYPE I). That matters: in ASCII mode the server rewrites line endings,
 	// so sizes and hashes would never match.
 	if err := conn.Login(res.User, string(res.Password)); err != nil {
 		_ = conn.Quit()
-		return nil, fmt.Errorf("ftp login as %s on %s: %w", res.User, addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("ftp login as %s on %s: %w", res.User, addr, connectErr(err, timeout, deadline))
 	}
 	_ = control.SetDeadline(time.Time{})
 

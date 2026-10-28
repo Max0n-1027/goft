@@ -2,11 +2,12 @@ package fsys
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"goft/internal/i18n"
 )
 
 // aborter is implemented by file systems that can drop their connection at
@@ -108,12 +109,12 @@ func (g *stallGuard) check() {
 
 func (g *stallGuard) stalledErr(cause error) error {
 	if cause == nil {
-		return fmt.Errorf("%w: nothing moved for %v, so the connection was dropped", ErrStalled, g.limit)
+		return i18n.Errorf("%w: nothing moved for %v, so the connection was dropped", ErrStalled, g.limit)
 	}
 	// The cause is kept as text only. What a dropped connection reports is not
 	// a statement about the file, and must not be mistaken for one — a missing
 	// file, say, which would not be retried.
-	return fmt.Errorf("%w: nothing moved for %v, so the connection was dropped (%v)", ErrStalled, g.limit, cause)
+	return i18n.Errorf("%w: nothing moved for %v, so the connection was dropped (%v)", ErrStalled, g.limit, cause)
 }
 
 // List implements FS.

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
+
+	"goft/internal/i18n"
 )
 
 // variable matches a reference to the environment: ${NAME}, and nothing else.
@@ -64,7 +66,7 @@ func expandEnv(v *viper.Viper) error {
 
 	if len(missing) > 0 {
 		sort.Strings(missing)
-		return fmt.Errorf("environment variables are not set: %s", strings.Join(missing, ", "))
+		return i18n.Errorf("environment variables are not set: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }

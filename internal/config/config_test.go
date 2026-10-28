@@ -185,7 +185,7 @@ func TestWarningsFlagZeroStableDuration(t *testing.T) {
 	cfg := validConfig(t.TempDir())
 	cfg.StableDuration = 0
 	got := Warnings(cfg)
-	if len(got) == 0 || !strings.Contains(got[0], "stable_duration") {
+	if len(got) == 0 || !strings.Contains(got[0].String(), "stable_duration") {
 		t.Errorf("Warnings() = %v, want a remark about stable_duration", got)
 	}
 }
@@ -411,7 +411,7 @@ func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
 
 	var found bool
 	for _, w := range Warnings(cfg) {
-		if strings.Contains(w, "remove_empty_dirs") {
+		if strings.Contains(w.String(), "remove_empty_dirs") {
 			found = true
 		}
 	}
@@ -423,7 +423,7 @@ func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
 
 	cfg.Recursive = true
 	for _, w := range Warnings(cfg) {
-		if strings.Contains(w, "remove_empty_dirs") {
+		if strings.Contains(w.String(), "remove_empty_dirs") {
 			t.Errorf("warning %q should not appear with recursion on", w)
 		}
 	}

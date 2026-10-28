@@ -10,6 +10,7 @@ import (
 
 	"goft/internal/config"
 	"goft/internal/engine"
+	"goft/internal/i18n"
 	"goft/internal/verify"
 )
 
@@ -20,6 +21,7 @@ import (
 type Console struct {
 	mu    sync.Mutex
 	w     io.Writer
+	p     *i18n.Printer
 	level slog.Level
 	color bool
 
@@ -40,6 +42,8 @@ type Console struct {
 type Options struct {
 	// Writer is where the output goes, normally stdout.
 	Writer io.Writer
+	// Printer is the language to write in. Nil means English.
+	Printer *i18n.Printer
 	// Level follows log.level: it decides which results are worth a line.
 	Level slog.Level
 	// Color turns on ANSI colouring, and should only be set for a terminal.
@@ -59,8 +63,13 @@ type Options struct {
 
 // New builds a console.
 func New(o Options) *Console {
+	p := o.Printer
+	if p == nil {
+		p = i18n.English
+	}
 	return &Console{
 		w:         o.Writer,
+		p:         p,
 		level:     o.Level,
 		color:     o.Color,
 		job:       o.Job,
@@ -96,13 +105,13 @@ func (c *Console) Plan(p engine.Plan) {
 	route := fmt.Sprintf("%s %s %s", c.local, c.direction.Arrow(), c.remote)
 	if p.DryRun {
 		c.notable = true
-		c.emit(fmt.Sprintf("goft %s  %s  (dry-run)", c.job, route))
+		c.emit(c.p.Sprintf("goft %s  %s  (dry-run)", c.job, route))
 		for _, f := range p.Files {
 			c.emit(fmt.Sprintf("  %s %10s", padRight(f.Path, 40), humanBytes(f.Size)))
 		}
 		return
 	}
-	c.emit(fmt.Sprintf("goft %s  %s  (%d files, %s)", c.job, route, len(p.Files), humanBytes(p.Bytes)))
+	c.emit(c.p.Sprintf("goft %s  %s  (%d files, %s)", c.job, route, len(p.Files), humanBytes(p.Bytes)))
 }
 
 // Result prints one file's outcome, if the current level admits it.
@@ -121,12 +130,12 @@ func (c *Console) Result(r engine.Result) {
 
 	switch {
 	case r.Err != nil:
-		line += "  " + r.Err.Error()
+		line += "  " + c.p.Error(r.Err)
 	case r.Reason != "":
-		line += "  " + string(r.Reason)
+		line += "  " + c.reason(r.Reason)
 	}
 	if r.Attempts > 1 {
-		line += fmt.Sprintf("  (attempt %d)", r.Attempts)
+		line += "  " + c.p.Sprintf("(attempt %d)", r.Attempts)
 	}
 	if c.level <= slog.LevelDebug {
 		if r.Hashed {
@@ -157,7 +166,7 @@ func (c *Console) CycleError(err error) {
 	// Whatever the cycle had already reported — the header naming the files it
 	// found — is worth seeing alongside the reason it got no further.
 	c.flush()
-	fmt.Fprintf(c.w, "goft %s  %s\n", c.job, err.Error())
+	fmt.Fprintf(c.w, "goft %s  %s\n", c.job, c.p.Error(err))
 }
 
 // flush writes out anything the cycle has been holding back and starts afresh.
@@ -175,16 +184,16 @@ func (c *Console) Summary(s engine.Summary) {
 
 	switch {
 	case s.PlannedOnly:
-		c.emit(fmt.Sprintf("%d files, %s would be transferred (nothing was sent)",
+		c.emit(c.p.Sprintf("%d files, %s would be transferred (nothing was sent)",
 			s.Total, humanBytes(s.Bytes)))
 	case s.Interrupted:
 		// Worth seeing even when nothing had moved yet: the run was stopped,
 		// and what it left undone is part of the answer.
 		c.notable = true
-		c.emit(fmt.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed, %d not started  interrupted after %.1fs",
+		c.emit(c.p.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed, %d not started  interrupted after %.1fs",
 			s.Total+s.NotStarted, s.Succeeded, humanBytes(s.Bytes), s.Skipped, s.Failed, s.NotStarted, s.Elapsed.Seconds()))
 	case s.Total > 0:
-		c.emit(fmt.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed  in %.1fs",
+		c.emit(c.p.Sprintf("%d files: %d transferred (%s), %d skipped, %d failed  in %.1fs",
 			s.Total, s.Succeeded, humanBytes(s.Bytes), s.Skipped, s.Failed, s.Elapsed.Seconds()))
 	}
 
@@ -205,20 +214,36 @@ const (
 )
 
 func (c *Console) paint(r engine.Result) string {
-	label, color := "ok", ansiGreen
+	label, color := i18n.N("ok"), ansiGreen
 	switch r.Outcome {
 	case engine.Skipped:
-		label, color = "skipped", ansiYellow
+		label, color = i18n.N("skipped"), ansiYellow
 	case engine.Failed:
-		label, color = "failed", ansiRed
+		label, color = i18n.N("failed"), ansiRed
 	}
 	// Pad before colouring: escape sequences would otherwise be counted as
 	// characters and throw the column alignment off.
-	padded := fmt.Sprintf("%-8s", label)
+	padded := padRight(c.p.Text(label), 8)
 	if !c.color {
 		return padded
 	}
 	return color + padded + ansiReset
+}
+
+// reasons are the words a skip is explained with. In English they are the
+// values the log records in its reason field, so that a line on the screen and
+// a record in the log can be matched up by eye.
+var reasons = map[engine.Reason]string{
+	engine.ReasonAlreadyExists: i18n.N("already_exists"),
+	engine.ReasonIdentical:     i18n.N("identical"),
+	engine.ReasonSizeLimit:     i18n.N("size_limit"),
+}
+
+func (c *Console) reason(r engine.Reason) string {
+	if key, ok := reasons[r]; ok {
+		return c.p.Text(key)
+	}
+	return string(r)
 }
 
 func rate(r engine.Result) float64 {

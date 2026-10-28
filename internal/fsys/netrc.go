@@ -2,7 +2,6 @@ package fsys
 
 import (
 	"bufio"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"strings"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 // netrcEntry is one machine block from a .netrc file.
@@ -193,7 +193,7 @@ func resolveFTP(r config.Remote) (*Resolved, error) {
 		return res, nil
 	}
 
-	if warn := checkSecretPerm(path); warn != "" {
+	if warn, ok := checkSecretPerm(path); ok {
 		// curl warns and carries on; refusing outright would break working
 		// setups for a condition the operator may not control.
 		res.Warnings = append(res.Warnings, warn)
@@ -201,13 +201,13 @@ func resolveFTP(r config.Remote) (*Resolved, error) {
 
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("open netrc %s: %w", path, err)
+		return nil, i18n.Errorf("open netrc %s: %w", path, err)
 	}
 	defer f.Close()
 
 	entries, err := parseNetrc(f)
 	if err != nil {
-		return nil, fmt.Errorf("parse netrc %s: %w", path, err)
+		return nil, i18n.Errorf("parse netrc %s: %w", path, err)
 	}
 	entry, kind, ok := lookupNetrc(entries, r.Host)
 	if !ok {
@@ -227,16 +227,16 @@ func resolveFTP(r config.Remote) (*Resolved, error) {
 // checkSecretPerm reports a warning when a credentials file is readable by
 // anyone other than its owner. Windows permissions do not map onto this model,
 // so the check is skipped there rather than reporting something misleading.
-func checkSecretPerm(path string) string {
+func checkSecretPerm(path string) (i18n.Message, bool) {
 	if runtime.GOOS == "windows" {
-		return ""
+		return i18n.Message{}, false
 	}
 	fi, err := os.Stat(path)
 	if err != nil {
-		return ""
+		return i18n.Message{}, false
 	}
 	if mode := fi.Mode().Perm(); mode&0o077 != 0 {
-		return fmt.Sprintf("%s is readable by other users (mode %04o); chmod 600 it", path, mode)
+		return i18n.Msg("%s is readable by other users (mode %04o); chmod 600 it", path, mode), true
 	}
-	return ""
+	return i18n.Message{}, false
 }

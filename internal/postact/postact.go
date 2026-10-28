@@ -4,13 +4,13 @@ package postact
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 
 	"goft/internal/config"
 	"goft/internal/fsys"
+	"goft/internal/i18n"
 )
 
 // Apply runs the configured action against a file that has just been
@@ -27,7 +27,7 @@ func Apply(ctx context.Context, action config.PostAction, src fsys.FS, name, mov
 	case config.PostMove:
 		return move(src, name, moveTo)
 	default:
-		return fmt.Errorf("unknown post_action %q", action)
+		return i18n.Errorf("unknown post_action %q", action)
 	}
 }
 
@@ -39,7 +39,7 @@ func Apply(ctx context.Context, action config.PostAction, src fsys.FS, name, mov
 func move(src fsys.FS, name, moveTo string) error {
 	from, ok := fsys.HostPathOf(src, name)
 	if !ok {
-		return errors.New("post_action: move requires a local sending side")
+		return i18n.Errorf("post_action: move requires a local sending side")
 	}
 	to := filepath.Join(moveTo, filepath.FromSlash(name))
 
@@ -47,7 +47,7 @@ func move(src fsys.FS, name, moveTo string) error {
 		// fs.ErrExist, so that it is recognised as permanent: the name will
 		// still be taken on the next attempt, and retrying it only spends the
 		// backoff.
-		return fmt.Errorf("move target %s: %w", to, fs.ErrExist)
+		return i18n.Errorf("move target %s: %w", to, fs.ErrExist)
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}

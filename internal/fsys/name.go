@@ -1,9 +1,10 @@
 package fsys
 
 import (
-	"fmt"
 	"io/fs"
 	"strings"
+
+	"goft/internal/i18n"
 )
 
 // windowsDeviceNames are the names Windows reserves for devices. The name is
@@ -52,45 +53,45 @@ func checkStorableName(name, goos string) error {
 		return nil
 	}
 	for _, elem := range strings.Split(name, "/") {
-		if why := windowsNameProblem(elem); why != "" {
-			return fmt.Errorf("%q cannot be stored on windows: %s: %w", name, why, fs.ErrInvalid)
+		if why := windowsNameProblem(elem); !why.IsZero() {
+			return i18n.Errorf("%q cannot be stored on windows: %s: %w", name, why, fs.ErrInvalid)
 		}
 	}
 	return nil
 }
 
 // windowsNameProblem describes what is wrong with one path element, or returns
-// an empty string when nothing is.
-func windowsNameProblem(elem string) string {
+// an empty message when nothing is.
+func windowsNameProblem(elem string) i18n.Message {
 	// An empty element comes from a leading, trailing or doubled separator and
 	// says nothing about the name itself; "." and ".." are the directory's own
 	// entries rather than something being created.
 	if elem == "" || elem == "." || elem == ".." {
-		return ""
+		return i18n.Message{}
 	}
 
 	for _, r := range elem {
 		switch {
 		case r == ':':
-			return `":" would open an NTFS alternate data stream rather than name a file`
+			return i18n.Msg(`":" would open an NTFS alternate data stream rather than name a file`)
 		case r == '\\':
-			return `"\" separates directories here rather than being part of a name`
+			return i18n.Msg(`"\" separates directories here rather than being part of a name`)
 		case strings.ContainsRune(windowsForbiddenRunes, r):
-			return fmt.Sprintf("%q is not allowed in a file name", r)
+			return i18n.Msg("%q is not allowed in a file name", r)
 		case r < 0x20:
-			return fmt.Sprintf("the control character %U is not allowed in a file name", r)
+			return i18n.Msg("the control character %U is not allowed in a file name", r)
 		}
 	}
 
 	switch elem[len(elem)-1] {
 	case '.':
-		return "a trailing dot is dropped, so the file would be stored under a different name"
+		return i18n.Msg("a trailing dot is dropped, so the file would be stored under a different name")
 	case ' ':
-		return "a trailing space is dropped, so the file would be stored under a different name"
+		return i18n.Msg("a trailing space is dropped, so the file would be stored under a different name")
 	}
 
 	if base, _, _ := strings.Cut(elem, "."); windowsDeviceNames[strings.ToUpper(base)] {
-		return fmt.Sprintf("%q is a reserved device name, whatever extension follows it", base)
+		return i18n.Msg("%q is a reserved device name, whatever extension follows it", base)
 	}
-	return ""
+	return i18n.Message{}
 }

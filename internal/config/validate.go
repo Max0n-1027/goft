@@ -2,10 +2,11 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"goft/internal/i18n"
 )
 
 // Direction is the transfer direction, chosen by the command rather than by
@@ -51,9 +52,7 @@ func quoted[T ~string](vals []T) string {
 // validated once the connection parameters have been resolved.
 func Validate(c *Config) error {
 	var errs []error
-	add := func(format string, args ...any) {
-		errs = append(errs, fmt.Errorf(format, args...))
-	}
+	add := func(err error) { errs = append(errs, err) }
 
 	validateLocal(c, add)
 	validateRemote(c, add)
@@ -66,37 +65,37 @@ func Validate(c *Config) error {
 
 // addFunc collects one problem. Every check takes it so that a configuration
 // with several mistakes reports all of them at once.
-type addFunc func(format string, args ...any)
+type addFunc func(err error)
 
 func validateLocal(c *Config, add addFunc) {
 	switch fi, err := os.Stat(c.Local.Path); {
 	case c.Local.Path == "":
-		add("local.path is required")
+		add(i18n.Errorf("local.path is required"))
 	case err != nil:
-		add("local.path %q: %v", c.Local.Path, err)
+		add(i18n.Errorf("local.path %q: %v", c.Local.Path, err))
 	case !fi.IsDir():
-		add("local.path %q is not a directory", c.Local.Path)
+		add(i18n.Errorf("local.path %q is not a directory", c.Local.Path))
 	}
 }
 
 func validateRemote(c *Config, add addFunc) {
 	if c.Remote.Path == "" {
-		add("remote.path is required")
+		add(i18n.Errorf("remote.path is required"))
 	}
 	if c.Remote.Port < 0 || c.Remote.Port > 65535 {
-		add("remote.port %d is out of range", c.Remote.Port)
+		add(i18n.Errorf("remote.port %d is out of range", c.Remote.Port))
 	}
 
 	protocols := []Protocol{ProtocolFTP, ProtocolSFTP, ProtocolSMB, ProtocolLocal}
 	switch {
 	case c.Remote.Protocol == "":
-		add("remote.protocol is required (%s)", quoted(protocols))
+		add(i18n.Errorf("remote.protocol is required (%s)", quoted(protocols)))
 	case !oneOf(c.Remote.Protocol, protocols...):
-		add("remote.protocol %q is invalid (%s)", c.Remote.Protocol, quoted(protocols))
+		add(i18n.Errorf("remote.protocol %q is invalid (%s)", c.Remote.Protocol, quoted(protocols)))
 	case c.Remote.Protocol == ProtocolSMB:
 		// The share is the one thing no credential store can supply.
 		if c.Remote.Share == "" {
-			add("remote.share is required for protocol smb")
+			add(i18n.Errorf("remote.share is required for protocol smb"))
 		}
 	case c.Remote.Protocol == ProtocolLocal:
 		validateLocalRemote(c, add)
@@ -104,13 +103,13 @@ func validateRemote(c *Config, add addFunc) {
 	}
 
 	if c.Remote.Host == "" {
-		add("remote.host is required")
+		add(i18n.Errorf("remote.host is required"))
 	}
 	if c.Remote.ConnectTimeout <= 0 {
-		add("remote.connect_timeout must be > 0")
+		add(i18n.Errorf("remote.connect_timeout must be > 0"))
 	}
 	if c.Remote.IOTimeout < 0 {
-		add("remote.io_timeout must be >= 0 (0 turns it off)")
+		add(i18n.Errorf("remote.io_timeout must be >= 0 (0 turns it off)"))
 	}
 }
 
@@ -132,12 +131,12 @@ func validateLocalRemote(c *Config, add addFunc) {
 		{"share", c.Remote.Share != ""},
 	} {
 		if unused.set {
-			add("remote.%s is not used with protocol local", unused.name)
+			add(i18n.Errorf("remote.%s is not used with protocol local", unused.name))
 		}
 	}
 
 	if fi, err := os.Stat(c.Remote.Path); err == nil && !fi.IsDir() {
-		add("remote.path %q is not a directory", c.Remote.Path)
+		add(i18n.Errorf("remote.path %q is not a directory", c.Remote.Path))
 	}
 
 	// Two directories where one contains the other would transfer a file into
@@ -149,83 +148,83 @@ func validateLocalRemote(c *Config, add addFunc) {
 	}
 	switch inside, err := isInside(c.Local.Path, c.Remote.Path); {
 	case err != nil:
-		add("remote.path %q: %v", c.Remote.Path, err)
+		add(i18n.Errorf("remote.path %q: %v", c.Remote.Path, err))
 	case inside:
-		add("remote.path %q is inside local.path %q: the two sides of a transfer must be separate directories",
-			c.Remote.Path, c.Local.Path)
+		add(i18n.Errorf("remote.path %q is inside local.path %q: the two sides of a transfer must be separate directories",
+			c.Remote.Path, c.Local.Path))
 	}
 	switch inside, err := isInside(c.Remote.Path, c.Local.Path); {
 	case err != nil:
-		add("local.path %q: %v", c.Local.Path, err)
+		add(i18n.Errorf("local.path %q: %v", c.Local.Path, err))
 	case inside:
-		add("local.path %q is inside remote.path %q: the two sides of a transfer must be separate directories",
-			c.Local.Path, c.Remote.Path)
+		add(i18n.Errorf("local.path %q is inside remote.path %q: the two sides of a transfer must be separate directories",
+			c.Local.Path, c.Remote.Path))
 	}
 }
 
 func validateTransfer(c *Config, add addFunc) {
 	if !oneOf(c.Verify, VerifyHash, VerifyLength, VerifyNone) {
-		add("verify %q is invalid (%s)", c.Verify, quoted([]Verify{VerifyHash, VerifyLength, VerifyNone}))
+		add(i18n.Errorf("verify %q is invalid (%s)", c.Verify, quoted([]Verify{VerifyHash, VerifyLength, VerifyNone})))
 	}
 	if !oneOf(c.OnExists, OnExistsSkip, OnExistsOverwrite) {
-		add("on_exists %q is invalid (%s)", c.OnExists, quoted([]OnExists{OnExistsSkip, OnExistsOverwrite}))
+		add(i18n.Errorf("on_exists %q is invalid (%s)", c.OnExists, quoted([]OnExists{OnExistsSkip, OnExistsOverwrite})))
 	}
 	if !oneOf(c.PostAction, PostNone, PostDelete, PostMove) {
-		add("post_action %q is invalid (%s)", c.PostAction, quoted([]PostAction{PostNone, PostDelete, PostMove}))
+		add(i18n.Errorf("post_action %q is invalid (%s)", c.PostAction, quoted([]PostAction{PostNone, PostDelete, PostMove})))
 	}
 
 	if c.PostAction == PostMove {
 		switch inside, err := isInside(c.Local.Path, c.MoveTo); {
 		case c.MoveTo == "":
-			add("move_to is required when post_action is move")
+			add(i18n.Errorf("move_to is required when post_action is move"))
 		case err != nil:
-			add("move_to %q: %v", c.MoveTo, err)
+			add(i18n.Errorf("move_to %q: %v", c.MoveTo, err))
 		case inside:
-			add("move_to %q must not be inside local.path %q: moved files would be picked up again on the next cycle",
-				c.MoveTo, c.Local.Path)
+			add(i18n.Errorf("move_to %q must not be inside local.path %q: moved files would be picked up again on the next cycle",
+				c.MoveTo, c.Local.Path))
 		}
 	}
 
 	if c.RemoveEmptyDirs && c.PostAction == PostNone {
-		add("remove_empty_dirs needs post_action delete or move: with none the source files stay where they are, so no directory ever becomes empty")
+		add(i18n.Errorf("remove_empty_dirs needs post_action delete or move: with none the source files stay where they are, so no directory ever becomes empty"))
 	}
 
 	if c.Retry.MaxAttempts < 1 {
-		add("retry.max_attempts must be >= 1 (1 disables retrying)")
+		add(i18n.Errorf("retry.max_attempts must be >= 1 (1 disables retrying)"))
 	}
 	if c.Retry.Interval < 0 {
-		add("retry.interval must be >= 0")
+		add(i18n.Errorf("retry.interval must be >= 0"))
 	}
 	if c.Retry.Backoff < 1 {
-		add("retry.backoff must be >= 1")
+		add(i18n.Errorf("retry.backoff must be >= 1"))
 	}
 }
 
 func validateScanning(c *Config, add addFunc) {
 	if c.MaxFileSizeMB < 0 {
-		add("max_file_size_mb must be >= 0")
+		add(i18n.Errorf("max_file_size_mb must be >= 0"))
 	}
 	if c.Workers < 1 {
-		add("workers must be >= 1")
+		add(i18n.Errorf("workers must be >= 1"))
 	}
 	if c.PollInterval <= 0 {
-		add("poll_interval must be > 0")
+		add(i18n.Errorf("poll_interval must be > 0"))
 	}
 	if c.StableDuration < 0 {
-		add("stable_duration must be >= 0")
+		add(i18n.Errorf("stable_duration must be >= 0"))
 	}
 }
 
 func validateLog(c *Config, add addFunc) {
 	if !oneOf(c.Log.Rotation, RotationSize, RotationDaily, RotationMonthly) {
-		add("log.rotation %q is invalid (%s)", c.Log.Rotation, quoted([]Rotation{RotationSize, RotationDaily, RotationMonthly}))
+		add(i18n.Errorf("log.rotation %q is invalid (%s)", c.Log.Rotation, quoted([]Rotation{RotationSize, RotationDaily, RotationMonthly})))
 	}
 	if _, err := ParseLevel(c.Log.Level); err != nil {
-		add("log.level: %v", err)
+		add(i18n.Errorf("log.level: %v", err))
 	}
 	for _, f := range c.Log.Fields {
 		if !oneOf(strings.ToLower(strings.TrimSpace(f)), SelectableLogFields...) {
-			add("log.fields: %q is not a field (%s)", f, strings.Join(SelectableLogFields, " | "))
+			add(i18n.Errorf("log.fields: %q is not a field (%s)", f, strings.Join(SelectableLogFields, " | ")))
 		}
 	}
 }
@@ -234,22 +233,22 @@ func validateLog(c *Config, add addFunc) {
 // command, and therefore the direction, is known.
 func ValidateForDirection(c *Config, dir Direction) error {
 	if dir == DirRecv && c.PostAction == PostMove {
-		return fmt.Errorf("post_action: move is only supported for send; use none or delete for recv")
+		return i18n.Errorf("post_action: move is only supported for send; use none or delete for recv")
 	}
 	return nil
 }
 
 // Warnings returns non-fatal configuration remarks worth logging at startup.
-func Warnings(c *Config) []string {
-	var w []string
+func Warnings(c *Config) []i18n.Message {
+	var w []i18n.Message
 	if c.StableDuration == 0 {
-		w = append(w, "stable_duration is 0: files that are still being written may be transferred")
+		w = append(w, i18n.Msg("stable_duration is 0: files that are still being written may be transferred"))
 	}
 	if c.Remote.InsecureSkipHostKeyCheck {
-		w = append(w, "insecure_skip_host_key_check is enabled: the remote host key is not verified")
+		w = append(w, i18n.Msg("insecure_skip_host_key_check is enabled: the remote host key is not verified"))
 	}
 	if c.RemoveEmptyDirs && !c.Recursive {
-		w = append(w, "remove_empty_dirs has nothing to do without recursive: only subdirectories are removed, and without recursion none are visited")
+		w = append(w, i18n.Msg("remove_empty_dirs has nothing to do without recursive: only subdirectories are removed, and without recursion none are visited"))
 	}
 	return w
 }

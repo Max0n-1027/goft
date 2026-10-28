@@ -15,6 +15,7 @@ import (
 	smb2 "github.com/cloudsoda/go-smb2"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 type smbFS struct {
@@ -64,7 +65,7 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	// Checked here rather than during validation, because a Credential Manager
 	// entry may supply them and that is only known once resolved.
 	if res.User == "" || !res.Password.IsSet() {
-		return nil, fmt.Errorf("no smb credentials for %s: set remote.user and remote.password, or register %q with cmdkey", r.Host, credentialTarget(r))
+		return nil, i18n.Errorf("no smb credentials for %s: set remote.user and remote.password, or register %q with cmdkey", r.Host, credentialTarget(r))
 	}
 
 	addr := net.JoinHostPort(res.Host, strconv.Itoa(res.Port))
@@ -76,7 +77,7 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	d := net.Dialer{Deadline: deadline}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	_ = conn.SetDeadline(deadline)
 
@@ -90,7 +91,7 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	session, err := dialer.DialConn(ctx, conn, addr)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("smb session with %s: %w", addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("smb session with %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 
 	// Paths are share relative from here on, which is why remote.path must not
@@ -99,7 +100,7 @@ func newSMB(ctx context.Context, r config.Remote) (FS, error) {
 	if err != nil {
 		_ = session.Logoff()
 		conn.Close()
-		return nil, fmt.Errorf("mount share %q on %s: %w", r.Share, addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("mount share %q on %s: %w", r.Share, addr, connectErr(err, timeout, deadline))
 	}
 	_ = conn.SetDeadline(time.Time{})
 
@@ -204,7 +205,7 @@ func (s *smbFS) mkdirAll(p string) error {
 		if fi.IsDir() {
 			return nil
 		}
-		return fmt.Errorf("%s is a file, not a directory: %w", p, fs.ErrExist)
+		return i18n.Errorf("%s is a file, not a directory: %w", p, fs.ErrExist)
 	}
 	if parent := path.Dir(p); parent != "." && parent != p {
 		if perr := s.mkdirAll(parent); perr != nil {

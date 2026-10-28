@@ -2,12 +2,13 @@ package fsys
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"golang.org/x/sys/windows"
+
+	"goft/internal/i18n"
 )
 
 // defaultAgent is where to look for an ssh-agent when nothing names one: the
@@ -34,7 +35,7 @@ func dialAgent(addr string, deadline time.Time) (agentConn, error) {
 		// cause is SSH_AUTH_SOCK set by an MSYS or Cygwin shell, whose agent
 		// listens on a file that only its own libraries can connect to — and
 		// which ssh.exe cannot use either, so the way out is the pipe.
-		return nil, fmt.Errorf("%w (the agent of an MSYS or Cygwin shell listens on a socket Windows cannot connect to; the OpenSSH agent for Windows listens on %s)", err, defaultAgent)
+		return nil, i18n.Errorf("%w (the agent of an MSYS or Cygwin shell listens on a socket Windows cannot connect to; the OpenSSH agent for Windows listens on %s)", err, defaultAgent)
 	}
 	return conn, nil
 }
@@ -58,7 +59,7 @@ func dialAgentPipe(addr string, deadline time.Time) (agentConn, error) {
 	// talking, so a handle that will not take the deadline is no use.
 	if err := f.SetDeadline(deadline); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("ssh-agent pipe %s will not take a deadline: %w", addr, err)
+		return nil, i18n.Errorf("ssh-agent pipe %s will not take a deadline: %w", addr, err)
 	}
 	return f, nil
 }

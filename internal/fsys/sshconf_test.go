@@ -150,7 +150,7 @@ func TestAnUnreadableDefaultSSHConfigIsReportedNotIgnored(t *testing.T) {
 	}
 	var said bool
 	for _, w := range res.Warnings {
-		if strings.Contains(w, "Match") {
+		if strings.Contains(w.String(), "Match") {
 			said = true
 		}
 	}

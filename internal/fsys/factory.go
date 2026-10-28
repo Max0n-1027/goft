@@ -3,12 +3,12 @@ package fsys
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 // NewRemote opens a connection to the configured remote side.
@@ -48,7 +48,7 @@ func newNonNetwork(r config.Remote) (FS, error) {
 		// the engine cannot tell the difference.
 		return NewLocal(r.Path), nil
 	default:
-		return nil, fmt.Errorf("unsupported protocol %q", r.Protocol)
+		return nil, i18n.Errorf("unsupported protocol %q", r.Protocol)
 	}
 }
 
@@ -59,9 +59,22 @@ type Resolution struct {
 	Field string
 	// Value is what it ended up as, with any secret already masked.
 	Value string
+	// Note says something about the value worth knowing alongside it, such
+	// as how many keys an agent holds. It is often empty.
+	Note i18n.Message
 	// Source is where it came from: yaml, ssh_config, netrc,
 	// credential_manager, env or default.
 	Source string
+}
+
+// Display renders the value with its note, if it has one, in p's language.
+// The value itself is never translated: it is a path, a name or a word from
+// the configuration.
+func (r Resolution) Display(p *i18n.Printer) string {
+	if r.Note.IsZero() {
+		return r.Value
+	}
+	return r.Value + " (" + r.Note.Localize(p) + ")"
 }
 
 // Sources for a resolved connection parameter.
@@ -104,7 +117,7 @@ type Resolved struct {
 	Trace []Resolution
 	// Warnings are conditions worth telling the operator about, such as an
 	// ssh_config directive that goft cannot honour.
-	Warnings []string
+	Warnings []i18n.Message
 }
 
 // Resolve merges the job configuration with whatever default files the
@@ -121,7 +134,7 @@ func Resolve(r config.Remote) (*Resolved, error) {
 	case config.ProtocolLocal:
 		return resolveLocal(r)
 	default:
-		return nil, fmt.Errorf("unsupported protocol %q", r.Protocol)
+		return nil, i18n.Errorf("unsupported protocol %q", r.Protocol)
 	}
 }
 
@@ -134,7 +147,7 @@ func Resolve(r config.Remote) (*Resolved, error) {
 // and a failure at or after the deadline is the deadline's doing either way.
 func connectErr(err error, timeout time.Duration, deadline time.Time) error {
 	if errors.Is(err, os.ErrDeadlineExceeded) || !time.Now().Before(deadline) {
-		return fmt.Errorf("no usable connection within connect_timeout %v: %w", timeout, err)
+		return i18n.Errorf("no usable connection within connect_timeout %v: %w", timeout, err)
 	}
 	return err
 }
@@ -146,7 +159,7 @@ func resolveLocal(r config.Remote) (*Resolved, error) {
 	res := &Resolved{}
 	path, err := filepath.Abs(r.Path)
 	if err != nil {
-		return nil, fmt.Errorf("remote.path %s: %w", r.Path, err)
+		return nil, i18n.Errorf("remote.path %s: %w", r.Path, err)
 	}
 	res.record("path", path, SourceYAML)
 	return res, nil
@@ -154,4 +167,12 @@ func resolveLocal(r config.Remote) (*Resolved, error) {
 
 func (r *Resolved) record(field, value, source string) {
 	r.Trace = append(r.Trace, Resolution{Field: field, Value: value, Source: source})
+}
+
+func (r *Resolved) recordNote(field, value string, note i18n.Message, source string) {
+	r.Trace = append(r.Trace, Resolution{Field: field, Value: value, Note: note, Source: source})
+}
+
+func (r *Resolved) warn(m i18n.Message) {
+	r.Warnings = append(r.Warnings, m)
 }

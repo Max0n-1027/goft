@@ -2,7 +2,6 @@ package fsys
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 // SourceEnv marks a connection parameter taken from an environment variable,
@@ -104,8 +104,7 @@ func resolveAgent(res *Resolved, r config.Remote, look sshLookup, home string, d
 	keys, err := listAgentKeys(addr, deadline)
 	if err != nil {
 		if source != SourceDefault {
-			res.Warnings = append(res.Warnings,
-				fmt.Sprintf("the ssh-agent at %s cannot be used, so none of its keys are offered: %v", addr, err))
+			res.warn(i18n.Msg("the ssh-agent at %s cannot be used, so none of its keys are offered: %v", addr, err))
 		}
 		return nil, source
 	}
@@ -131,18 +130,22 @@ func recordAgent(res *Resolved, keys agentKeys, source string) {
 		}
 		offered = len(matched)
 	}
-	value := fmt.Sprintf("%s (holds %s)", res.Agent, countKeys(len(keys)))
-	if offered != len(keys) {
-		value = fmt.Sprintf("%s (offers %d of the %s it holds)", res.Agent, offered, countKeys(len(keys)))
-	}
-	res.record("ssh_agent", value, source)
+	res.recordNote("ssh_agent", res.Agent, agentNote(offered, len(keys)), source)
 }
 
-func countKeys(n int) string {
-	if n == 1 {
-		return "1 key"
+// agentNote says how many keys the agent holds, and how many of them will be
+// offered when that is not all of them.
+func agentNote(offered, held int) i18n.Message {
+	switch {
+	case offered != held && held == 1:
+		return i18n.Msg("offers %d of the 1 key it holds", offered)
+	case offered != held:
+		return i18n.Msg("offers %d of the %d keys it holds", offered, held)
+	case held == 1:
+		return i18n.Msg("holds 1 key")
+	default:
+		return i18n.Msg("holds %d keys", held)
 	}
-	return fmt.Sprintf("%d keys", n)
 }
 
 // listAgentKeys asks the agent at addr which keys it holds.
@@ -172,12 +175,12 @@ func openAgent(addr string, deadline time.Time) ([]ssh.Signer, func(), error) {
 	}
 	conn, err := dialAgent(addr, deadline)
 	if err != nil {
-		return nil, nil, fmt.Errorf("ssh-agent %s: %w", addr, err)
+		return nil, nil, i18n.Errorf("ssh-agent %s: %w", addr, err)
 	}
 	signers, err := agent.NewClient(conn).Signers()
 	if err != nil {
 		_ = conn.Close()
-		return nil, nil, fmt.Errorf("ssh-agent %s: %w", addr, err)
+		return nil, nil, i18n.Errorf("ssh-agent %s: %w", addr, err)
 	}
 	return signers, func() { _ = conn.Close() }, nil
 }
@@ -241,7 +244,7 @@ func offeredSigners(res *Resolved, agentSigners []ssh.Signer) ([]ssh.Signer, err
 		}
 		signer, err := parseKey(pem, res.Passphrase)
 		if err != nil {
-			return nil, fmt.Errorf("parse private key %s: %w", path, err)
+			return nil, i18n.Errorf("parse private key %s: %w", path, err)
 		}
 		fromFiles = append(fromFiles, signer)
 	}

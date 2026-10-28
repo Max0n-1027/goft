@@ -3,29 +3,46 @@
 goft は2種類の出力を持ちます。記録としての JSON Lines ログと、見ている人のための人間可読な出力（標準出力）です。
 このページは後者を扱います。以下のブロックはすべて [cmd/logsample_test.go](../cmd/logsample_test.go)
 のテストを実際に走らせて採取したもので、書き換えたのはパス・ホスト名・ポートだけです。
+このページの例は日本語で表示したときのものです。英語の例は [英語版](console-output.md) にあります。
 
 単発実行（`send`・`recv`）は既定で出力し、`serve` は出力しません。常駐プロセスは通常ログとともに放っておかれるからです。
 `--console` / `--no-console` でどちらにも切り替えられます。
+
+## 表示する言語
+
+画面に出す内容（この出力、`goft test`、`--help`、エラーメッセージ）は英語か日本語で表示します。次のうち最初に指定があるものに従います。
+
+1. `--lang en` または `--lang ja`
+2. 環境変数 `GOFT_LANG`（`en` か `ja`）
+3. ロケール。`LANGUAGE`・`LC_ALL`・`LC_MESSAGES`・`LANG` を gettext と同じ規則で読みます。`LANG=ja_JP.UTF-8` なら日本語、`LANG=C` なら英語です
+4. Windows では、ユーザーアカウントの表示言語
+
+どれにも当てはまらなければ英語です。`--lang` と `GOFT_LANG` は goft のために指定するものなので、`en` と `ja` 以外を書くとエラーになります。
+ロケールが他の言語を指している場合は、単に英語で表示します。
+
+ログは表示言語にかかわらず常に英語です。ログは検索や集計に使うもので、同じ事象は常に同じ文言で記録されるべきだからです。
+設定項目の名前（`remote.host` など）や、取得元（`yaml`・`env` など）のように設定ファイルに書く語は、どちらの言語でもそのまま表示します。
+OS やライブラリが返すメッセージ（`permission denied` など）は、goft の説明文の中にそのまま入ります。
 
 ## 何かを動かす前に — `goft test`
 
 `goft test` は設定を検証し、接続設定がどう解決されたかを表示し、接続して、両方向を確認します。
 
 ```console
-config        /etc/goft/invoice-upload.yaml                      OK
-local         /data/out/invoice                                  OK  readable and writable
-resolve       host = invoice-sftp                                (yaml)
-resolve       port = 22                                          (yaml)
-resolve       user = uploader                                    (yaml)
-resolve       password = REDACTED                                (yaml)
-resolve       private_key = /home/svc-transfer/.ssh/id_ed25519   (default)
-resolve       known_hosts = /home/svc-transfer/.ssh/known_hosts  (yaml)
-connect       sftp://invoice-sftp:22/upload/invoice              OK
-recv (list)   0 entries                                          OK
-send (write)  writable                                           OK
+設定          /etc/goft/invoice-upload.yaml                      OK
+ローカル      /data/out/invoice                                  OK  読み書き可能
+解決          host = invoice-sftp                                (yaml)
+解決          port = 22                                          (yaml)
+解決          user = uploader                                    (yaml)
+解決          password = REDACTED                                (yaml)
+解決          private_key = /home/svc-transfer/.ssh/id_ed25519   (default)
+解決          known_hosts = /home/svc-transfer/.ssh/known_hosts  (yaml)
+接続          sftp://invoice-sftp:22/upload/invoice              OK
+受信（一覧）  0 件                                               OK
+送信（書込）  書き込み可能                                       OK
 ```
 
-ジョブが意図しない場所に繋がっているときに効くのが `resolve` の行です。実際に使われる値と、その出所
+ジョブが意図しない場所に繋がっているときに効くのが「解決」の行です。実際に使われる値と、その出所
 （`yaml` / `ssh_config` / `netrc` / `credential_manager` / `env` / `default`）が並びます。
 秘密情報は「設定されている」ことだけが示され、値は表示されません。`env` は `SSH_AUTH_SOCK` で
 見つけた ssh-agent です。その行については [ssh-agent で認証する](ssh-agent-ja.md) で説明しています。
@@ -38,27 +55,27 @@ send (write)  writable                                           OK
 ## 何が送られるか — `--dry-run`
 
 ```console
-goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (dry-run)
+goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  （ドライラン）
   2026-08/invoice_202608_03.csv                  17 B
   archive.dat                                 2.0 MiB
   invoice_202608_01.csv                     830.1 KiB
   invoice_202608_02.csv                     625.0 KiB
-4 files, 3.4 MiB would be transferred (nothing was sent)
+4 件、3.4 MiB を転送する予定です（何も送っていません）
 ```
 
 dry-run は送り側を読んで終わります。転送先には一切触れません（すでにファイルがあるかどうかも尋ねません）。
-そのため `ok` や `skipped` は判定できず、判定したふりもしません。見つけたものと合計だけを並べます。
+そのため「完了」や「スキップ」は判定できず、判定したふりもしません。見つけたものと合計だけを並べます。
 dry-run では結果を確認することが目的なので、コンソール出力は常に有効になります。
 
 ## 転送
 
 ```console
-goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (4 files, 3.4 MiB)
-[2/4] archive.dat                                 2.0 MiB  skipped     0.0s  size_limit
-[1/4] 2026-08/invoice_202608_03.csv                  17 B  ok          0.0s
-[3/4] invoice_202608_01.csv                     830.1 KiB  ok          0.1s
-[4/4] invoice_202608_02.csv                     625.0 KiB  ok          0.1s
-4 files: 3 transferred (1.4 MiB), 1 skipped, 0 failed  in 3.1s
+goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  （4 件、3.4 MiB）
+[2/4] archive.dat                                 2.0 MiB  スキップ    0.0s  サイズ上限を超過
+[1/4] 2026-08/invoice_202608_03.csv                  17 B  完了        0.0s
+[4/4] invoice_202608_02.csv                     625.0 KiB  完了        0.0s
+[3/4] invoice_202608_01.csv                     830.1 KiB  完了        0.0s
+4 件: 転送 3（1.4 MiB）、スキップ 1、失敗 0  3.0 秒
 ```
 
 ヘッダーにはジョブ名・両端・作業量が入ります。矢印は `send` が `->`、`recv` が `<-` です。
@@ -66,16 +83,17 @@ goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (4
 
 `[2/4]` の数字は一覧上の位置で、完了順ではありません。`workers: 2` なので、行はワーカーが終わった順に出ます。
 `archive.dat` は `max_file_size_mb` を超えており、失敗ではなく理由付きのスキップとして扱われます。
+スキップの理由は、ログの `reason` 項目では `size_limit`（サイズ上限を超過）・`already_exists`（転送先に既にある）・`identical`（内容が同じ）と記録されます。
 
 すべて届いている状態でもう一度実行すると、こうなります。
 
 ```console
-goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (4 files, 3.4 MiB)
-[1/4] 2026-08/invoice_202608_03.csv                  17 B  skipped     0.0s  already_exists
-[3/4] invoice_202608_01.csv                     830.1 KiB  skipped     0.0s  already_exists
-[4/4] invoice_202608_02.csv                     625.0 KiB  skipped     0.0s  already_exists
-[2/4] archive.dat                                 2.0 MiB  skipped     0.0s  size_limit
-4 files: 0 transferred (0 B), 4 skipped, 0 failed  in 3.0s
+goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  （4 件、3.4 MiB）
+[2/4] archive.dat                                 2.0 MiB  スキップ    0.0s  サイズ上限を超過
+[1/4] 2026-08/invoice_202608_03.csv                  17 B  スキップ    0.0s  転送先に既にある
+[4/4] invoice_202608_02.csv                     625.0 KiB  スキップ    0.0s  転送先に既にある
+[3/4] invoice_202608_01.csv                     830.1 KiB  スキップ    0.0s  転送先に既にある
+4 件: 転送 0（0 B）、スキップ 4、失敗 0  3.0 秒
 ```
 
 何も転送されず、各行にその理由が入ります。`on_exists: skip` のジョブが正常で、やることが無いときの姿です。
@@ -87,10 +105,10 @@ Ctrl+C を受けると、転送中のファイルは最後まで終わらせ、�
 次の例は、64 MiB のファイル3つのうち1つ目の転送が始まって1秒足らずで止めたものです。
 
 ```console
-goft statement-upload  /data/out/statement -> sftp://invoice-sftp/upload/statement  (3 files, 192.0 MiB)
-[1/3] part-1.dat                                 64.0 MiB  ok          6.4s
-3 files: 1 transferred (64.0 MiB), 0 skipped, 0 failed, 2 not started  interrupted after 6.4s
-goft: interrupted before the run was complete
+goft statement-upload  /data/out/statement -> sftp://invoice-sftp/upload/statement  （3 件、192.0 MiB）
+[1/3] part-1.dat                                 64.0 MiB  完了        6.4s
+3 件: 転送 1（64.0 MiB）、スキップ 0、失敗 0、未着手 2  6.4 秒で中断
+goft: 実行が終わる前に中断されました
 ```
 
 送っていたファイルは完全に届き、残りの2つは次の実行に回されます。この実行は完了していないので、終了コードは 2 です。
@@ -103,7 +121,7 @@ goft: interrupted before the run was complete
 
 ## 色・パイプ・2つのストリーム
 
-`ok` / `skipped` / `failed` に色が付くのは、標準出力が端末のときだけです。
+「完了」「スキップ」「失敗」に色が付くのは、標準出力が端末のときだけです。
 パイプやリダイレクトではエスケープシーケンスを含まないプレーンテキストになります。
 
 `log.path` を設定せずコンソール出力が有効な場合、JSON ログは標準エラーに回ります。両者が混ざらないようにするためです。

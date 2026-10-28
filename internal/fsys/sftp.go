@@ -20,6 +20,7 @@ import (
 	"golang.org/x/crypto/ssh/knownhosts"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 type sftpFS struct {
@@ -53,7 +54,7 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 		return nil, err
 	}
 	if len(auths) == 0 {
-		return nil, errors.New("no sftp authentication available: set remote.private_key or remote.password, provide an IdentityFile in ssh_config, or load a key into ssh-agent")
+		return nil, i18n.Errorf("no sftp authentication available: set remote.private_key or remote.password, provide an IdentityFile in ssh_config, or load a key into ssh-agent")
 	}
 
 	hostKey, err := hostKeyCallback(res)
@@ -65,7 +66,7 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 	d := net.Dialer{Deadline: deadline}
 	netConn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("dial %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	_ = netConn.SetDeadline(deadline)
 
@@ -77,14 +78,14 @@ func newSFTP(ctx context.Context, r config.Remote) (FS, error) {
 	})
 	if err != nil {
 		netConn.Close()
-		return nil, fmt.Errorf("ssh handshake with %s: %w", addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("ssh handshake with %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	conn := ssh.NewClient(sshConn, chans, reqs)
 
 	client, err := sftp.NewClient(conn)
 	if err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("start sftp subsystem on %s: %w", addr, connectErr(err, timeout, deadline))
+		return nil, i18n.Errorf("start sftp subsystem on %s: %w", addr, connectErr(err, timeout, deadline))
 	}
 	_ = netConn.SetDeadline(time.Time{})
 
@@ -118,7 +119,7 @@ func hostKeyCallback(res *Resolved) (ssh.HostKeyCallback, error) {
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 	if res.KnownHosts == "" {
-		return nil, errors.New("no known_hosts file to verify the host key against; set remote.known_hosts or remote.insecure_skip_host_key_check")
+		return nil, i18n.Errorf("no known_hosts file to verify the host key against; set remote.known_hosts or remote.insecure_skip_host_key_check")
 	}
 	if res.AcceptNewHostKeys {
 		if err := ensureKnownHosts(res.KnownHosts); err != nil {
@@ -127,7 +128,7 @@ func hostKeyCallback(res *Resolved) (ssh.HostKeyCallback, error) {
 	}
 	cb, err := knownhosts.New(res.KnownHosts)
 	if err != nil {
-		return nil, fmt.Errorf("read known_hosts %s: %w", res.KnownHosts, err)
+		return nil, i18n.Errorf("read known_hosts %s: %w", res.KnownHosts, err)
 	}
 	if !res.AcceptNewHostKeys {
 		return cb, nil
@@ -239,7 +240,7 @@ func recordHostKey(path, hostname string, remote net.Addr, key ssh.PublicKey) er
 
 	cb, err := knownhosts.New(path)
 	if err != nil {
-		return fmt.Errorf("read known_hosts %s: %w", path, err)
+		return i18n.Errorf("read known_hosts %s: %w", path, err)
 	}
 	if err := cb(hostname, remote, key); !isUnknownHost(err) {
 		return err
@@ -247,12 +248,12 @@ func recordHostKey(path, hostname string, remote net.Addr, key ssh.PublicKey) er
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
-		return fmt.Errorf("record host key in %s: %w", path, err)
+		return i18n.Errorf("record host key in %s: %w", path, err)
 	}
 	line := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key) + "\n"
 	if _, err := f.WriteString(line); err != nil {
 		f.Close()
-		return fmt.Errorf("record host key in %s: %w", path, err)
+		return i18n.Errorf("record host key in %s: %w", path, err)
 	}
 	return f.Close()
 }
@@ -264,11 +265,11 @@ func ensureKnownHosts(path string) error {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("create known_hosts %s: %w", path, err)
+		return i18n.Errorf("create known_hosts %s: %w", path, err)
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
-		return fmt.Errorf("create known_hosts %s: %w", path, err)
+		return i18n.Errorf("create known_hosts %s: %w", path, err)
 	}
 	return f.Close()
 }
