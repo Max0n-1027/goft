@@ -14,9 +14,12 @@
 - [Authenticating with ssh-agent](ssh-agent.md) — where goft finds the agent,
   which keys it offers and in what order, and jobs run as a service.
 
-Every example on these pages is captured from a real run against a live sftp
-server, by the test in [cmd/logsample_test.go](../cmd/logsample_test.go). Only
-paths, the host and the port are rewritten.
+The examples on these pages are captured from real runs by the tests in
+[cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go), which start a real sftp
+server for them to talk to; only paths, the host, the port and the user name are
+rewritten. The one exception is the run stopped part way in
+[What a run looks like on screen](console-output.md#stopping-part-way), which
+was stopped by hand.
 
 Elsewhere: [README.md](../README.md) for installing and configuring goft,
 [goft.example.yaml](../goft.example.yaml) for every setting with its default,

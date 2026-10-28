@@ -31,7 +31,7 @@ goft invoice-archive  /data/out/invoice -> /backup/invoice  （2 件、830.1 KiB
 ヘッダーには URL ではなく2つのパスがそのまま並びます。ログでも同じです。
 
 ```jsonl
-{"time":"2026-08-26T04:49:53.025347889+09:00","level":"INFO","msg":"transfer","job":"invoice-archive","direction":"send","cycle_id":"7837a662-4f12-40ad-9cd7-163a8753ff83","event":"transfer","src":"/data/out/invoice/2026-08/invoice_202608_02.csv","dst":"/backup/invoice/2026-08/invoice_202608_02.csv","protocol":"local","bytes":16,"duration_ms":0,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
+{"time":"2026-10-29T01:58:56.097620921+09:00","level":"INFO","msg":"transfer","job":"invoice-archive","direction":"send","cycle_id":"e593cad5-697e-4bc4-9a97-f8641b824bd3","event":"transfer","src":"/data/out/invoice/2026-08/invoice_202608_02.csv","dst":"/backup/invoice/2026-08/invoice_202608_02.csv","protocol":"local","bytes":16,"duration_ms":0,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
 ```
 
 `protocol` は `local` として記録され、`src` と `dst` には両方のファイル名が省略なしで入ります。
@@ -55,8 +55,8 @@ goft invoice-archive  /data/out/invoice -> /backup/invoice  （2 件、830.1 KiB
 2つのディレクトリは別々でなければなりません。一方が他方を含む場合や、同じディレクトリを指定した場合は設定エラーになります。
 
 ```
-remote.path "/data/out/invoice/backup" is inside local.path "/data/out/invoice":
-the two sides of a transfer must be separate directories
+remote.path "/data/out/invoice/backup" が local.path "/data/out/invoice" の中にあります。
+転送の両側は別々のディレクトリにしてください
 ```
 
 走査しているディレクトリの中へコピーすると、そのコピー自体も転送対象になり、`recursive: true` では止まらなくなります。

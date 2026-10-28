@@ -69,10 +69,11 @@ func dialAgentPipe(addr string, deadline time.Time) (agentConn, error) {
 //
 // A named pipe serves one client per instance and the agent creates the next
 // only once the last has been taken, so a client arriving in that gap is told
-// every instance is busy rather than asked to wait. goft opens the agent once
-// while resolving and once per worker connection, which is exactly the burst
-// that lands in the gap, and a transfer that fails because the agent was busy
-// for a moment would be a poor reason to lose a cycle. ssh.exe retries for as
+// every instance is busy rather than asked to wait. goft opens the agent twice
+// for every connection — once to list its keys, then straight away again to
+// sign with them — which is exactly the timing that lands in the gap, and a
+// transfer that fails because the agent was busy for a moment would be a poor
+// reason to lose a cycle. ssh.exe retries for as
 // long as it takes; here connect_timeout bounds the waiting, so a job against
 // an agent that never frees an instance still gives up when it said it would.
 //

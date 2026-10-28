@@ -101,14 +101,15 @@ type Local struct {
 	Path string `mapstructure:"path"`
 }
 
-// Remote describes the server side of a job, including its credentials.
+// Remote describes the other side of a job — a server and its credentials, or
+// with protocol local a second directory on this machine.
 //
 // Anything left out may be filled in from somewhere the platform already keeps
 // it: ~/.ssh/config for sftp, ~/.netrc for ftp, and on Windows a generic
 // Credential Manager entry registered for goft, whatever the protocol. What is
 // set here always wins over all of them.
 type Remote struct {
-	// Protocol is ftp, sftp or smb.
+	// Protocol is ftp, sftp, smb or local.
 	Protocol Protocol `mapstructure:"protocol"`
 	// Host is the server. For sftp it may be a ~/.ssh/config Host alias, in
 	// which case the real name comes from that file's HostName.
@@ -116,7 +117,7 @@ type Remote struct {
 	// Port defaults to 21, 22 or 445 depending on the protocol.
 	Port int `mapstructure:"port"`
 	// Path is the directory on the server. For smb it is relative to Share and
-	// must not repeat it.
+	// must not repeat it; for local it is a directory on this machine.
 	Path string `mapstructure:"path"`
 	// User and Password authenticate the connection.
 	User     string `mapstructure:"user"`
@@ -157,6 +158,14 @@ type Remote struct {
 	// Share is the smb share to mount, and Domain the NTLM domain.
 	Share  string `mapstructure:"share"`
 	Domain string `mapstructure:"domain"`
+
+	// CaseInsensitive declares whether this side treats names that differ only
+	// in case, A.csv and a.csv, as one name. Nil leaves it to what goft knows:
+	// a directory on Windows or macOS and an SMB share do, an sftp or ftp
+	// server is taken not to, since neither protocol has a way to ask. Set it
+	// for a server that does — OpenSSH on Windows, say — so that two such files
+	// are not sent onto one name.
+	CaseInsensitive *bool `mapstructure:"case_insensitive"`
 
 	// ConnectTimeout bounds how long opening a connection may take, from
 	// asking the ssh-agent for keys and the TCP connection through the

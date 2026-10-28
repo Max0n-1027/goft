@@ -2,9 +2,11 @@
 Package engine runs transfer cycles.
 
 The engine is direction agnostic. It is handed a sending [fsys.FS] and a
-receiving one and never learns which of them is local, so upload and download
-are the same code path. Only the post-transfer move, which is upload-only, and
-the arrow the console draws depend on the direction.
+receiving one and moves files between them the same way whichever of them is
+local, so upload and download are the same code path. The direction is used
+only to name things: each log record gives a file's full location on the
+machine it is on. The post-transfer move, which only send allows, is ruled out
+for recv when the configuration is validated.
 
 A cycle scans the sending side, waits for each file to stop changing, lists the
 receiving directories once to decide what is already there, and then hands the

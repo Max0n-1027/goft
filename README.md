@@ -182,9 +182,12 @@ processes can be collected in one place and still be told apart.
 ## Behaviour worth knowing
 
 **Detection is not instant.** `serve` runs one cycle at a time and sleeps
-between them, so the shortest delay before a file is picked up is
-`max(poll_interval, stable_duration)`. Running cycles serially is what makes it
-impossible for a file to be picked up twice while it is still being sent.
+`poll_interval` between them, and a file is picked up by the first scan that
+has seen it unchanged for `stable_duration`. Once a file stops changing it
+therefore waits for the next scan, and then for `stable_duration` rounded up to
+whole poll intervals — between 5 and 10 seconds with the defaults. Running
+cycles serially is what makes it impossible for a file to be picked up twice
+while it is still being sent.
 
 **A file is only transferred once it stops changing.** goft compares size and
 modification time across cycles rather than trusting the timestamp alone,
@@ -265,33 +268,38 @@ calls `2026:01.csv` cannot be written to a Windows disk under that name: the
 colon opens an NTFS alternate data stream, so the bytes end up hidden inside an
 empty file called `2026`, invisible to Explorer, to `dir`, to a backup and to
 goft's own next cycle. Reading the file back finds it again — the same
-reinterpretation happens on the way in — so verification passes and the
-transfer looks like a success. A trailing dot or space is the same story:
-Windows drops it, and the file arrives under a name that is not the one the
-server used. So are the reserved device names (`con`, `nul`, `aux`, `com1` and
-the rest), which ordinary Win32 path resolution cannot reach afterwards.
-Because none of this can be caught after the fact, writing onto a Windows disk
-— `recv`, or `send` with `protocol: local` — refuses such a name before writing
-anything, records the file as failed and says what
-about the name was the problem. It is not retried, since the name would be
-refused identically next time. The rest of the cycle carries on, and every name
-Windows can hold as written is transferred as before.
+reinterpretation happens on the way in — so verification passes and the transfer
+looks like a success. A trailing dot or space is the same story: Windows drops
+it, and the file arrives under a name that is not the one the server used. So
+are the reserved device names (`con`, `nul`, `aux`, `com1` and the rest), which
+ordinary Win32 path resolution cannot reach afterwards. Because none of this can
+be caught after the fact, writing onto a Windows disk — `recv`, or `send` with
+`protocol: local` — refuses such a name before writing anything, records the
+file as failed and says what about the name was the problem. It is not retried,
+since the name would be refused identically next time. The rest of the cycle
+carries on, and every name Windows can hold as written is transferred as before.
 
 **Names that differ only in case are not merged.** A Windows or macOS disk or
 an SMB share cannot hold `A.csv` and `a.csv` side by side, while a Linux source
 can. When one cycle finds both, neither is sent and both are recorded as
 failed: sending them would keep only one, report both as delivered, and with
-`post_action: delete` remove both sources.
+`post_action: delete` remove both sources. goft knows this of a directory on a
+Windows or macOS machine and of an SMB share. An sftp or ftp server is taken to
+tell case apart, since neither protocol has a way to ask, so for one that does
+not — OpenSSH on Windows, say — set `remote.case_insensitive: true`. The same
+setting set to `false` tells goft the opposite, for a share or a disk that has
+been made case sensitive.
 
 **A connection that goes quiet is given up on.** Opening one — for sftp asking
 ssh-agent for its keys, then the TCP connection, the handshake, the login and,
-for SMB, mounting the share — has to finish within `remote.connect_timeout` (30 seconds by default). Once open, a
-connection that moves no data for `remote.io_timeout` (5 minutes) while
-something is waiting on it is dropped, and the file is tried again over a new
-one. That measures silence, not duration: a large file that keeps moving is
-never cut off, and nor is a connection that is merely idle between files.
-Without these, a server that accepted the connection and then hung held a
-watching job there for good, since cycles run one at a time.
+for SMB, mounting the share — has to finish within `remote.connect_timeout` (30
+seconds by default). Once open, a connection that moves no data for
+`remote.io_timeout` (5 minutes) while something is waiting on it is dropped, and
+the file is tried again over a new one. That measures silence, not duration: a
+large file that keeps moving is never cut off, and nor is a connection that is
+merely idle between files. Without these, a server that accepted the connection
+and then hung held a watching job there for good, since cycles run one at a
+time.
 
 **Stopping finishes what is under way.** Ctrl+C or SIGTERM stops the run from
 starting anything new, while a file already being transferred is finished — a
@@ -434,11 +442,11 @@ goft send 2>/dev/null    # just the readable output
 goft send >/dev/null     # just the JSON log
 ```
 
-Every verified transfer records `hash_src` and `hash_dst` at info level, so the
-log is enough on its own to show that a file arrived intact. A file skipped
-because the destination already held the same content records them too: not
-sending needs its evidence as much as sending does. Both ends are
-recorded in full — `/data/out/invoice/a.csv` and
+With `verify: hash`, the default, every transfer records `hash_src` and
+`hash_dst` at info level, so the log is enough on its own to show that a file
+arrived intact. A file skipped because the destination already held the same
+content records them too: not sending needs its evidence as much as sending
+does. Both ends are recorded in full — `/data/out/invoice/a.csv` and
 `sftp://host/upload/invoice/a.csv` — because a path relative to a root the
 reader cannot see identifies nothing.
 
@@ -463,9 +471,9 @@ log:
   fields: [src, dst, bytes, result, error, hash_src, hash_dst]
 ```
 
-Omit the key for the full set. `time`, `level`, `msg`, `job`, `direction`,
-`event` and `cycle_id` are always written, since a record missing those cannot
-be placed.
+Omit the key for every field but `rate_mibs`, which joins them at debug level.
+`time`, `level`, `msg`, `job`, `direction`, `event` and `cycle_id` are always
+written, since a record missing those cannot be placed.
 
 `cycle_id` is a fresh UUID for each pass over the sending side, shared by every
 record that pass produced — the transfers, their retries and the summary — so
@@ -476,9 +484,9 @@ jq -r 'select(.cycle_id == "6482c7d7-...")' goft.log
 ```
 
 Startup and shutdown records carry no `cycle_id`, because they belong to the
-process rather than to any one pass. The
-field names are listed in [goft.example.yaml](goft.example.yaml), and an
-unknown one is a configuration error rather than something silently ignored.
+process rather than to any one pass. The field names are listed in
+[goft.example.yaml](goft.example.yaml), and an unknown one is a configuration
+error rather than something silently ignored.
 
 `log.level` is the only verbosity setting, and it governs both outputs. See the
 table at the end of [goft.example.yaml](goft.example.yaml).
@@ -539,16 +547,18 @@ a versioned release for each `v*` tag, and a prerelease named
 than releases — unsupported, superseded by the next commit — and only the five
 most recent are kept.
 
-Each archive holds the binary, both READMEs, the licence and the example
-configuration, and `SHA256SUMS` covers them all:
+Each archive holds the binary, both READMEs and the pages under `docs/` they
+link to, the licence and the example configuration, and `SHA256SUMS` covers them
+all:
 
 ```bash
-tar xzf goft_v0.2.0_linux_amd64.tar.gz
-sudo install goft_v0.2.0_linux_amd64/goft /usr/local/bin/
+version=v0.2.2    # the release you downloaded
+tar xzf goft_${version}_linux_amd64.tar.gz
+sudo install goft_${version}_linux_amd64/goft /usr/local/bin/
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
-[The workflow](.github/workflows/release.yml) runs `gofmt`, `go vet` and
+[The workflow](https://github.com/Max0n-1027/goft/blob/main/.github/workflows/release.yml) runs `gofmt`, `go vet` and
 `go test -race` first, so a build that fails them is never published. It
 publishes what `./package.sh` produces, which is the same command to run by
 hand:

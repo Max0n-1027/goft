@@ -25,18 +25,21 @@ verifies it, renames it onto its final name only once verification passed, and
 then applies the configured post-transfer action to the source. With
 remove_empty_dirs it also removes a sending directory that the transfer took the
 last file out of, and its parent if that leaves it empty; the sending root
-itself is never removed. A file
-therefore only appears under its real name on the receiving side once it is
-complete and verified; a process killed mid-transfer leaves nothing behind but
-a .goft.tmp file, which the next run overwrites. A retry writes under a name of
-its own, <name>.2.goft.tmp, since the attempt it replaces may still be in
-progress at the other end.
+itself is never removed. A file therefore only appears under its real name on
+the receiving side once it is complete and verified; a process killed
+mid-transfer leaves nothing behind but a .goft.tmp file, which the next run
+overwrites. A retry writes under a name of its own, <name>.2.goft.tmp, since the
+attempt it replaces may still be in progress at the other end.
 
-Receiving onto Windows refuses a file whose name that platform would store as
-something else — a colon, which opens an NTFS alternate data stream, a trailing
-dot or space, which is dropped, or a reserved device name. Such a file is
-recorded as failed rather than written, because reading it back would find it
-again and verification would pass over a file no other program can see.
+Writing onto a Windows disk — recv, or send with protocol: local — refuses a
+file whose name that platform would store as something else: a colon, which
+opens an NTFS alternate data stream, a trailing dot or space, which is dropped,
+or a reserved device name. Such a file is recorded as failed rather than
+written, because reading it back would find it again and verification would
+pass over a file no other program can see. Two files whose names differ only in
+case are not sent either when the destination cannot tell them apart;
+remote.case_insensitive says so for a server goft cannot ask, such as OpenSSH
+on Windows.
 
 # Configuration
 
@@ -59,10 +62,12 @@ part of the file: it is chosen by the command.
 
 Credentials need not be written in plain text. Any ${VAR} in a value is
 replaced from the environment, and one that is not set is an error; a $ not
-followed by a brace is an ordinary character. sftp fills in whatever is left out from
-~/.ssh/config, and ftp does the same from ~/.netrc (%USERPROFILE%\.netrc on
-Windows); sftp also takes keys from ssh-agent, as ssh does. On Windows a generic credential registered as goft:<protocol>://<host>
-supplies the user and password for any protocol, and is read before those files:
+followed by a brace is an ordinary character. sftp fills in whatever is left
+out from ~/.ssh/config, and ftp does the same from ~/.netrc
+(%USERPROFILE%\.netrc on Windows); sftp also takes keys from ssh-agent, as ssh
+does. On Windows a generic credential registered as goft:<protocol>://<host>
+supplies the user and password for any protocol, and is read before those
+files:
 
 	cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
 
@@ -102,6 +107,9 @@ language, so that the same event is always written the same way.
 	1  the run completed but at least one file failed
 	2  the run could not be completed: bad configuration, the connection failed,
 	   or it was stopped before it finished
+
+goft test reports both directions and exits 2 only when neither works, since a
+read-only account is a good setup for recv.
 
 Ctrl+C or SIGTERM stops a run from starting anything new; a file already being
 transferred is finished first.

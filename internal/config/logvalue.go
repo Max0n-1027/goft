@@ -40,9 +40,9 @@ func (c *Config) LogValue() slog.Value {
 // LogValue renders the remote side. Only the settings that were actually given
 // appear, so the record shows the job rather than a wall of empty fields.
 //
-// Where the connection details finally came from — the file, ssh_config, netrc
-// or a built-in default — is a separate question, recorded at debug level when
-// the connection is made.
+// Where the connection details finally came from — the file, ssh_config, netrc,
+// the Credential Manager, the environment or a built-in default — is a
+// separate question, recorded at debug level just after this record.
 func (r Remote) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("protocol", string(r.Protocol)),
@@ -91,6 +91,9 @@ func (r Remote) LogValue() slog.Value {
 	add("netrc_file", absPath(r.NetrcFile))
 	add("share", r.Share)
 	add("domain", r.Domain)
+	if r.CaseInsensitive != nil {
+		attrs = append(attrs, slog.Bool("case_insensitive", *r.CaseInsensitive))
+	}
 	if !r.IsLocal() {
 		// Recorded with their defaults, like every other setting that decided
 		// how the run behaved.

@@ -5,13 +5,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"goft/internal/config"
 	"goft/internal/i18n"
 )
 
-// NewRemote opens a connection to the configured remote side.
+// NewRemote opens a connection to the configured remote side. For protocol
+// local nothing is opened: it returns a [Local] rooted at remote.path.
 //
 // Each call returns an independent connection: the engine gives every worker
 // its own, which is why the live connection count never exceeds workers.
@@ -31,12 +33,16 @@ func NewRemote(ctx context.Context, r config.Remote) (FS, error) {
 	case config.ProtocolSMB:
 		fs, err = newSMB(ctx, r)
 	default:
-		return newNonNetwork(r)
+		fs, err = newNonNetwork(r)
+		if err != nil {
+			return nil, err
+		}
+		return declareCase(fs, r.CaseInsensitive), nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	return guard(fs, r.IOTimeout), nil
+	return declareCase(guard(fs, r.IOTimeout), r.CaseInsensitive), nil
 }
 
 // newNonNetwork opens what is not reached over a connection, which is also
@@ -122,20 +128,34 @@ type Resolved struct {
 
 // Resolve merges the job configuration with whatever default files the
 // protocol consults, without opening a connection. goft test uses it to show
-// what a connection attempt would actually use.
+// what a connection attempt would actually use, and every run records it at
+// startup, warnings at warn level and the rest at debug.
 func Resolve(r config.Remote) (*Resolved, error) {
+	var (
+		res *Resolved
+		err error
+	)
 	switch r.Protocol {
 	case config.ProtocolSFTP:
-		return resolveSFTP(r)
+		res, err = resolveSFTP(r)
 	case config.ProtocolFTP:
-		return resolveFTP(r)
+		res, err = resolveFTP(r)
 	case config.ProtocolSMB:
-		return resolveSMB(r)
+		res, err = resolveSMB(r)
 	case config.ProtocolLocal:
-		return resolveLocal(r)
+		res, err = resolveLocal(r)
 	default:
 		return nil, i18n.Errorf("unsupported protocol %q", r.Protocol)
 	}
+	if err != nil {
+		return nil, err
+	}
+	// Only a declared answer is shown: what the protocol guesses is not a
+	// setting, and goft test lists settings.
+	if r.CaseInsensitive != nil {
+		res.record("case_insensitive", strconv.FormatBool(*r.CaseInsensitive), SourceYAML)
+	}
+	return res, nil
 }
 
 // connectErr says plainly that a connection ran out of time, rather than

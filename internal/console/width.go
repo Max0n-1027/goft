@@ -8,9 +8,10 @@ import (
 
 // padRight pads s on the right to at least cols terminal columns.
 //
-// fmt's own "%-40s" counts bytes, which puts a line holding a Japanese file
-// name out by two columns for every character in it, so the columns are laid
-// out here instead. Nothing is truncated: a name too long for its column has
+// fmt's own "%-40s" counts runes, and a terminal draws a Japanese character two
+// columns wide, which puts a line holding a Japanese file name out by one
+// column for every such character in it, so the columns are laid out here
+// instead. Nothing is truncated: a name too long for its column has
 // always pushed the rest of the line along, and losing part of the name would
 // be the worse trade.
 func padRight(s string, cols int) string {

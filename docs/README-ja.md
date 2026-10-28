@@ -7,8 +7,9 @@
 - [画面に出る内容](console-output-ja.md) — `goft test`・`--dry-run`・転送、表示する言語、そして2つの出力の分け方
 - [ssh-agent で認証する](ssh-agent-ja.md) — エージェントの探し方、出す鍵とその順番、サービスとして動かすジョブ
 
-これらのページの例はすべて、[cmd/logsample_test.go](../cmd/logsample_test.go) のテストが
-実サーバー（sftp）に対して実行した結果を採取したものです。書き換えているのはパス・ホスト名・ポートだけです。
+これらのページの例は、[cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go) のテストが実際に実行した結果を採取したものです。
+テストは本物の sftp サーバーを起動して相手にします。書き換えているのはパス・ホスト名・ポート・ユーザー名だけです。
+例外は [画面に出る内容](console-output-ja.md#途中で止めた場合) の途中で止めた実行で、これは手で止めたものです。
 画面出力の例は日本語で表示したときのもので、ログの例は英語です（ログは表示言語にかかわらず英語で記録します）。
 
 そのほか、導入と設定は [README-ja.md](../README-ja.md)、設定項目と既定値の一覧は

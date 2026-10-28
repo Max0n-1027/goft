@@ -1,8 +1,8 @@
 # ログを1行ずつ読む
 
-これは説明用に書き起こしたものではなく、実際のログです。[cmd/logsample_test.go](../cmd/logsample_test.go)
-のテストを実サーバー（sftp）に対して1回走らせた出力を、goft が書いたままの形で引用しています。
-書き換えたのはパス・ホスト名・ポートだけで、使い捨ての一時ディレクトリが実運用のジョブらしく読めるようにしてあります。
+これは説明用に書き起こしたものではなく、実際のログです。[cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go)
+のテストが起動した本物の sftp サーバーに対して1回走らせた出力を、goft が書いたままの形で引用しています。
+書き換えたのはパス・ホスト名・ポート・ユーザー名だけで、使い捨ての一時ディレクトリが実運用のジョブらしく読めるようにしてあります。
 
 ジョブは4つのファイルを送ります。2つは普通のファイル、1つはサイズ上限を超えたファイル、
 残る1つはアカウントに書き込み権限のないディレクトリにあります。
@@ -36,7 +36,7 @@ log:
 
 ```json
 {
-  "time": "2026-08-25T21:35:33.517911157+09:00",
+  "time": "2026-10-29T01:58:19.553460649+09:00",
   "level": "INFO",
   "msg": "starting",
   "job": "invoice-upload",
@@ -56,7 +56,9 @@ log:
       "user": "uploader",
       "password": "REDACTED",
       "known_hosts": "/home/svc-transfer/.ssh/known_hosts",
-      "use_ssh_config": false
+      "use_ssh_config": false,
+      "connect_timeout": "30s",
+      "io_timeout": "5m0s"
     },
     "recursive": true,
     "include": [
@@ -96,11 +98,11 @@ log:
 続いてファイルごとに1レコード、最後にその周期のサマリです。
 
 ```jsonl
-{"time":"2026-08-25T21:35:36.554360166+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
-{"time":"2026-08-25T21:35:36.561189297+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":6,"verify":"hash","result":"success","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
-{"time":"2026-08-25T21:35:36.561935166+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":7,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
-{"time":"2026-08-25T21:35:36.563337239+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":2,"verify":"hash","result":"failed","error":"permission denied"}
-{"time":"2026-08-25T21:35:36.563447555+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"summary","files":4,"succeeded":2,"skipped":1,"failed":1,"bytes":33,"duration_ms":3044}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.562050042+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"success","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
+{"time":"2026-10-29T01:58:22.561992625+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
+{"time":"2026-10-29T01:58:22.562222425+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"permission denied"}
+{"time":"2026-10-29T01:58:22.562234098+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"summary","files":4,"succeeded":2,"skipped":1,"failed":1,"bytes":33,"duration_ms":3008}
 ```
 
 読み方はこうです。`archive.dat` はサイズが大きすぎて送られませんでした。これは失敗ではなく警告で、他のファイルには影響しません。
@@ -117,11 +119,11 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 ## 2回目の実行 — すでに届いている場合
 
 ```jsonl
-{"time":"2026-08-25T21:35:39.602116798+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
-{"time":"2026-08-25T21:35:39.602367285+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
-{"time":"2026-08-25T21:35:39.60247795+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
-{"time":"2026-08-25T21:35:39.605613666+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":3,"verify":"hash","result":"failed","error":"permission denied"}
-{"time":"2026-08-25T21:35:39.605796156+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"377bafc7-4a65-49f9-b0cb-6d516e67b37e","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3037}
+{"time":"2026-10-29T01:58:25.564905414+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:25.568108976+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
+{"time":"2026-10-29T01:58:25.568094141+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"skipped","reason":"already_exists"}
+{"time":"2026-10-29T01:58:25.568346532+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"permission denied"}
+{"time":"2026-10-29T01:58:25.568358707+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"2ff33251-593a-4fd2-a1c0-9d423885f3b7","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3005}
 ```
 
 `on_exists: skip` は文字どおりの動作です。転送しませんし、その判断のために中身を読むこともしません。
@@ -133,11 +135,11 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 `on_exists: overwrite` でも無条件には上書きしません。先に両側を比較し、すでに同一のファイルはそのままにします。
 
 ```jsonl
-{"time":"2026-08-25T21:35:42.645140415+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
-{"time":"2026-08-25T21:35:42.649116785+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":3,"verify":"hash","result":"skipped","reason":"identical","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
-{"time":"2026-08-25T21:35:42.64981559+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":3,"verify":"hash","result":"skipped","reason":"identical","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
-{"time":"2026-08-25T21:35:42.651905931+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":2,"verify":"hash","result":"failed","error":"permission denied"}
-{"time":"2026-08-25T21:35:42.652011532+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"dc0db4b0-a4de-41f8-a30b-1521a2a56724","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3040}
+{"time":"2026-10-29T01:58:28.571390046+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:28.575556337+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/invoice_202608_01.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_01.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"skipped","reason":"identical","hash_src":"e2d74924f2f51afd","hash_dst":"e2d74924f2f51afd"}
+{"time":"2026-10-29T01:58:28.575522231+09:00","level":"INFO","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/invoice_202608_02.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_02.csv","protocol":"sftp","bytes":16,"duration_ms":0,"verify":"hash","result":"skipped","reason":"identical","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
+{"time":"2026-10-29T01:58:28.575763174+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"transfer","src":"/data/out/invoice/restricted/invoice_202608_03.csv","dst":"sftp://invoice-sftp/upload/invoice/restricted/invoice_202608_03.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"permission denied"}
+{"time":"2026-10-29T01:58:28.575775+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"43138471-aae1-48ff-b8fd-362ae1df10c7","event":"summary","files":4,"succeeded":0,"skipped":3,"failed":1,"bytes":0,"duration_ms":3006}
 ```
 
 `reason` は `already_exists` ではなく `identical` になり、ハッシュも記録されます。
@@ -145,19 +147,27 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 
 ## 再送と、それでも直らなかった失敗
 
-ここでは転送先の名前を置き換えられませんでした。転送そのものは成功していて（ハッシュが記録されています）、
-本名へ移す rename が失敗し続けています。
+ここでは転送先の名前を置き換えられませんでした。同じ名前のディレクトリが邪魔をしています。
+転送そのものは成功していて（ハッシュが記録されています）、本名へ移す rename が失敗し続けています。
+この実行では `on_exists: overwrite` と `retry.interval: 1s` を指定しています。
 
 ```jsonl
-{"time":"2026-08-25T21:35:48.694181956+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":2,"of":3,"retry_in_ms":1000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE)"}
-{"time":"2026-08-25T21:35:49.718238957+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":3,"of":3,"retry_in_ms":2000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE)"}
-{"time":"2026-08-25T21:35:51.740558027+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_05.csv","protocol":"sftp","bytes":17,"duration_ms":8,"verify":"hash","result":"failed","error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE)","hash_src":"b2d06a1f4fa13583","hash_dst":"b2d06a1f4fa13583","attempt":3}
-{"time":"2026-08-25T21:35:51.740695447+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"51a62aca-7da8-40fe-8ea9-af5e1a7ce683","event":"summary","files":1,"succeeded":0,"skipped":0,"failed":1,"bytes":0,"duration_ms":6077}
+{"time":"2026-10-29T01:58:34.585508388+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":2,"of":3,"retry_in_ms":1000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE) (could not clear the destination first: remove /upload/invoice/invoice_202608_05.csv: sftp: \"remove /upload/invoice/invoice_202608_05.csv: directory not empty\" (SSH_FX_FAILURE))"}
+{"time":"2026-10-29T01:58:35.588028566+09:00","level":"WARN","msg":"retrying transfer","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","attempt":3,"of":3,"retry_in_ms":2000,"error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.2.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE) (could not clear the destination first: remove /upload/invoice/invoice_202608_05.csv: sftp: \"remove /upload/invoice/invoice_202608_05.csv: directory not empty\" (SSH_FX_FAILURE))"}
+{"time":"2026-10-29T01:58:37.590781209+09:00","level":"ERROR","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"transfer","src":"/data/out/invoice/invoice_202608_05.csv","dst":"sftp://invoice-sftp/upload/invoice/invoice_202608_05.csv","protocol":"sftp","bytes":17,"duration_ms":0,"verify":"hash","result":"failed","error":"sftp: \"rename /upload/invoice/invoice_202608_05.csv.3.goft.tmp /upload/invoice/invoice_202608_05.csv: file exists\" (SSH_FX_FAILURE) (could not clear the destination first: remove /upload/invoice/invoice_202608_05.csv: sftp: \"remove /upload/invoice/invoice_202608_05.csv: directory not empty\" (SSH_FX_FAILURE))","hash_src":"b2d06a1f4fa13583","hash_dst":"b2d06a1f4fa13583","attempt":3}
+{"time":"2026-10-29T01:58:37.590805908+09:00","level":"INFO","msg":"cycle complete","job":"invoice-upload","direction":"send","cycle_id":"30070be4-5a3c-49f5-8f11-813a373a8f65","event":"summary","files":1,"succeeded":0,"skipped":0,"failed":1,"bytes":0,"duration_ms":6010}
 ```
 
 再送のレコードには、何回目か（`attempt` / `of`）と次の待ち時間（`retry_in_ms`）が入ります。
-待ち時間は 1秒 → 2秒 と倍になります。試行を使い切ると `failed` のレコードが1つ出て、そこに `attempt` が付きます。
-再送したことと、何回試したかの両方がログから分かります。一時ファイルは削除され、転送先は元のまま残ります。
+待ち時間は `retry.backoff` の倍率で 1秒 → 2秒 と伸びます。試行を使い切ると `failed` のレコードが1つ出て、そこに `attempt` が付きます。
+再送したことと、何回試したかの両方がログから分かります。一時ファイルは毎回削除され、転送先は元のまま残ります。
+
+どのエラーにも理由が2つ入っています。サーバーが既存の名前への rename を受け付けないので、goft は先にその名前を消そうとし、
+それも拒否されました。`could not clear the destination first:` の後ろが2つ目の拒否の理由です。
+また、試行ごとに `.goft.tmp`、`.2.goft.tmp`、`.3.goft.tmp` と別の一時名に書いています。
+理由は [1ファイルが辿る道](transfer-lifecycle-ja.md#3-一時名で書き込む) で説明しています。
+
+サーバーの応答は SFTP の汎用エラー `SSH_FX_FAILURE` で、再試行して直るかどうかは分からないため、goft は再試行しました。
 
 すべての失敗が再送されるわけではありません。接続の切断や検証の不一致は再送しますが、
 ファイルが無い・権限が無い・サーバーが 5xx を返した場合は再送しません。次に試しても同じ結果になるからです。
@@ -168,7 +178,7 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 設定のレコード（内容は上と同じ）に続いて、次の1行だけが出ます。
 
 ```jsonl
-{"time":"2026-08-25T21:35:45.661033784+09:00","level":"ERROR","msg":"run failed","job":"invoice-upload","direction":"send","event":"lifecycle","error":"dial invoice-sftp:22: dial tcp 10.0.4.12:22: connect: connection refused"}
+{"time":"2026-10-29T01:58:31.579118232+09:00","level":"ERROR","msg":"run failed","job":"invoice-upload","direction":"send","event":"lifecycle","error":"dial invoice-sftp:22: dial tcp 10.0.4.12:22: connect: connection refused"}
 ```
 
 繋がらないサーバーは、ファイルを1つも試す前に実行を終わらせます。転送のレコードは1件も出ず、設定と理由だけが残ります。
@@ -177,29 +187,29 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 
 ## デバッグレベル
 
-`log.level: debug` で増えるのは3種類です。まず、接続パラメータと、その値がどこから解決されたか。
+`log.level: debug` で増えるのは3種類です。まず、接続パラメーターと、その値がどこから解決されたか。
 
 ```jsonl
-{"time":"2026-08-25T21:35:51.743764459+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"host","value":"invoice-sftp","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744010482+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"port","value":"22","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744042149+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"user","value":"uploader","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744061866+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"password","value":"REDACTED","source":"yaml"}
-{"time":"2026-08-25T21:35:51.744079129+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"private_key","value":"/home/svc-transfer/.ssh/id_ed25519","source":"default"}
-{"time":"2026-08-25T21:35:51.74409743+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"known_hosts","value":"/home/svc-transfer/.ssh/known_hosts","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591500593+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"host","value":"invoice-sftp","source":"yaml"}
+{"time":"2026-10-29T01:58:37.59150647+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"port","value":"22","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591509101+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"user","value":"uploader","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591511153+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"password","value":"REDACTED","source":"yaml"}
+{"time":"2026-10-29T01:58:37.591513114+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"private_key","value":"/home/svc-transfer/.ssh/id_ed25519","source":"default"}
+{"time":"2026-10-29T01:58:37.591515199+09:00","level":"DEBUG","msg":"resolved connection setting","job":"invoice-upload","direction":"send","event":"connect","field":"known_hosts","value":"/home/svc-transfer/.ssh/known_hosts","source":"yaml"}
 ```
 
 次に、走査で何件見つかり、そのうち何件が安定していたか。
 
 ```jsonl
-{"time":"2026-08-25T21:35:54.7474434+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"scan","found":4,"settled":4}
+{"time":"2026-10-29T01:58:40.592979021+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"scan","found":4,"settled":4}
 ```
 
 そして転送のステップごとのレコードです。それぞれに `duration_ms` が付くので、遅い実行のどこが遅いのかを切り分けられます。
 
 ```jsonl
-{"time":"2026-08-25T21:35:54.781854799+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"transfer","step":"mkdir","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":0}
-{"time":"2026-08-25T21:35:54.784956443+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"transfer","step":"compare","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":2}
-{"time":"2026-08-25T21:35:54.785978073+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"transfer","step":"write","src":"/data/out/invoice/restricted/invoice_202608_03.csv","duration_ms":0,"error":"permission denied"}
+{"time":"2026-10-29T01:58:40.597366462+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"transfer","step":"mkdir","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":0}
+{"time":"2026-10-29T01:58:40.597579447+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"transfer","step":"compare","src":"/data/out/invoice/invoice_202608_01.csv","duration_ms":0}
+{"time":"2026-10-29T01:58:40.5976686+09:00","level":"DEBUG","msg":"step","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"transfer","step":"write","src":"/data/out/invoice/restricted/invoice_202608_03.csv","duration_ms":0,"error":"permission denied"}
 ```
 
 転送が成功したレコードには、このレベルでのみ `rate_mibs` が加わります。
@@ -213,7 +223,7 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 `max_file_size_mb` を超えたファイルは `reason: size_limit` でスキップされ、warn レベルで記録されます。
 
 ```jsonl
-{"time":"2026-08-25T21:35:36.554360166+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
 ```
 
 警告はプロセスごとにファイル1つにつき1回だけ書かれ、以降の周期では同じ内容を debug に落とします。
@@ -230,7 +240,7 @@ JSON Lines なので `jq` でレコード単位に読めます。
 
 ```bash
 # 1周期がしたことをすべて
-jq -c 'select(.cycle_id == "46466581-ab9f-4d57-bb5f-1c63aab9f97b")' invoice-upload.log
+jq -c 'select(.cycle_id == "ea701700-3c50-48d9-8cd1-f1b6ecabf70e")' invoice-upload.log
 
 # 何が、なぜ失敗したか
 jq -r 'select(.result == "failed") | "\(.time) \(.src) \(.error)"' invoice-upload.log

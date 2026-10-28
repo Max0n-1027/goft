@@ -66,8 +66,9 @@ warning       the ssh-agent at /run/user/1000/ssh-agent.sock cannot be used, so 
 
 Asking the agent is part of opening a connection, so it comes under
 `connect_timeout`. An agent that accepts the question and never answers is
-given up on when that runs out, and since the time was spent, so is that
-connection attempt; it counts as a failure and is retried like any other.
+given up on when that runs out, and since the time was spent, that connection
+attempt fails with it, as any connection that runs out of `connect_timeout`
+does.
 
 Any agent that speaks the ssh-agent protocol on a Unix socket or a Windows
 named pipe works. Pageant, for one, listens on a named pipe as well as its older
@@ -93,9 +94,10 @@ without the key, so what is left to it is the part that does not matter.
 **A pipe whose every instance is in use is waited for.** A named pipe serves
 one client per instance and the agent creates the next only once the last has
 been taken, so a client arriving in that gap is told every instance is busy
-rather than asked to wait. goft opens the agent once while resolving and once
-per worker, which is exactly the burst that lands in it, and a cycle lost to a
-moment's contention would be a poor trade. The waiting is bounded by
+rather than asked to wait. goft opens the agent twice for every connection it
+makes — once to list the keys, then again to sign with them — one straight
+after the other, which is exactly the timing that lands in that gap, and a
+cycle lost to a moment's contention would be a poor trade. The waiting is bounded by
 `connect_timeout` like the rest of the attempt, so an agent that never frees an
 instance costs one connection attempt rather than the run.
 

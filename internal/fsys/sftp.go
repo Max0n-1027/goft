@@ -284,7 +284,9 @@ func (s *sftpFS) abs(name string) string {
 // Describe implements FS.
 func (s *sftpFS) Describe() string { return s.desc }
 
-// CaseInsensitive implements FS. SFTP servers are POSIX in practice.
+// CaseInsensitive implements FS. Most SFTP servers sit on a POSIX file system,
+// and the protocol has no way to ask. One that does not — OpenSSH on Windows,
+// say — folds case without goft knowing.
 func (s *sftpFS) CaseInsensitive() bool { return false }
 
 // List implements FS.

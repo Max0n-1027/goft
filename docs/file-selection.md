@@ -3,7 +3,7 @@
 Every cycle starts by listing the sending side and deciding which files take
 part. This page describes that decision, in the order goft makes it. The
 captures come from a real run of the test in
-[cmd/logsample_test.go](../cmd/logsample_test.go).
+[cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go).
 
 ```yaml
 recursive: true
@@ -53,11 +53,16 @@ still running, so a half-written file looks settled.
 
 A single `send` or `recv` has no earlier cycle to compare against, so it takes
 two readings `stable_duration` apart and transfers what did not change in
-between. That is why a one-shot run of an idle directory still takes a few
-seconds.
+between. That is why a one-shot run takes at least `stable_duration` whenever
+there is a file to look at; an empty directory, or `stable_duration: 0`, needs
+no second reading.
 
-Under `serve`, the shortest possible delay before a new file is picked up is
-`max(poll_interval, stable_duration)`.
+Under `serve`, scans are `poll_interval` apart, counted from the end of the
+previous cycle, and a file is picked up by the first scan that has seen it
+unchanged for `stable_duration`. Once a file stops changing it therefore waits
+for the next scan, and then for `stable_duration` rounded up to whole poll
+intervals: with the defaults, `poll_interval: 5s` and `stable_duration: 3s`,
+between 5 and 10 seconds.
 
 **FTP timestamps are coarse.** FTP has no stat command; the modification time
 comes from `MLST` where the server supports it and from a directory listing
@@ -67,7 +72,7 @@ otherwise, which can be accurate only to the minute. Allow for that in
 At debug level the scan reports what it found and how much of it had settled:
 
 ```jsonl
-{"time":"2026-08-25T21:35:54.7474434+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"d148da46-4096-4f54-b7ea-54edcbf60f3f","event":"scan","found":4,"settled":4}
+{"time":"2026-10-29T01:58:40.592979021+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"scan","found":4,"settled":4}
 ```
 
 ## 4. The size cap
@@ -76,7 +81,7 @@ At debug level the scan reports what it found and how much of it had settled:
 the cap is skipped, with the rest of the cycle carrying on:
 
 ```jsonl
-{"time":"2026-08-25T21:35:36.554360166+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"46466581-ab9f-4d57-bb5f-1c63aab9f97b","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
 ```
 
 The warning is written once per file per process; later cycles record the same
@@ -93,7 +98,7 @@ on every poll.
 
 ## What that adds up to
 
-The dry run lists exactly the files that survived all four steps:
+The dry run lists the files that survived the first three steps:
 
 ```console
 goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (dry-run)
@@ -104,9 +109,8 @@ goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (d
 4 files, 3.4 MiB would be transferred (nothing was sent)
 ```
 
-Here `archive.dat` is listed although it is over the cap: a dry run reports what
-the scan found, and the cap is a transfer-time decision that would have shown
-as a skip.
+`archive.dat` is listed although it is over the cap: the cap is decided when the
+file would be transferred, and would have shown there as a skip.
 
 ## Files that keep being examined
 
