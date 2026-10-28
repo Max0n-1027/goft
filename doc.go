@@ -79,6 +79,7 @@ worth knowing before putting a job into service.
 	    --log-file   override log.path
 	    --console    force human readable output on stdout
 	    --no-console suppress human readable output on stdout
+	    --lang       language to write in, en or ja
 	    --dry-run    list what would be transferred, without touching the
 	                 destination (send, recv and serve)
 
@@ -88,6 +89,12 @@ The JSON Lines log is the record of what happened; the human readable output on
 stdout is for whoever is watching. Single runs print it by default and serve
 does not. When no log file is configured and the console output is on, the JSON
 log goes to stderr so that the two never mix.
+
+What goft says to a person — the console, goft test, help and error messages —
+is in English or Japanese: --lang decides, then GOFT_LANG, then the locale
+(LANGUAGE, LC_ALL, LC_MESSAGES, LANG), then on Windows the account's display
+language, and anything else is English. The log is in English whatever the
+language, so that the same event is always written the same way.
 
 # Exit status
 

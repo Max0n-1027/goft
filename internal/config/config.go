@@ -30,7 +30,6 @@ package config
 
 import (
 	"bytes"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -38,6 +37,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"goft/internal/i18n"
 )
 
 // Protocol identifies a remote transport.
@@ -363,22 +364,22 @@ func defaults(v *viper.Viper) {
 func Load(path string) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read config: %w", err)
+		return nil, i18n.Errorf("read config: %w", err)
 	}
 
 	v := viper.New()
 	v.SetConfigType("yaml")
 	defaults(v)
 	if err := v.ReadConfig(bytes.NewReader(raw)); err != nil {
-		return nil, fmt.Errorf("parse config %s: %w", path, err)
+		return nil, i18n.Errorf("parse config %s: %w", path, err)
 	}
 	if err := expandEnv(v); err != nil {
-		return nil, fmt.Errorf("config %s: %w", path, err)
+		return nil, i18n.Errorf("config %s: %w", path, err)
 	}
 
 	var c Config
 	if err := v.Unmarshal(&c); err != nil {
-		return nil, fmt.Errorf("decode config %s: %w", path, err)
+		return nil, i18n.Errorf("decode config %s: %w", path, err)
 	}
 	// Stored absolute: the log has to identify the file long after whatever
 	// working directory the command was run from is forgotten.

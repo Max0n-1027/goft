@@ -28,12 +28,13 @@ package fsys
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"path"
 	"strings"
 	"time"
+
+	"goft/internal/i18n"
 )
 
 // FileInfo is the subset of stat information goft relies on.
@@ -185,4 +186,4 @@ func HostPathOf(f FS, name string) (string, bool) {
 // ErrStalled reports an operation abandoned because its connection moved no
 // data for remote.io_timeout. The connection is closed to get the waiting call
 // back, so everything else on it fails the same way, at once.
-var ErrStalled = errors.New("the connection stalled")
+var ErrStalled = i18n.Errorf("the connection stalled")

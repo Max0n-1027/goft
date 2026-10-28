@@ -22,10 +22,10 @@ on_exists: skip
 ## 実行するとこうなります
 
 ```console
-goft invoice-archive  /data/out/invoice -> /backup/invoice  (2 files, 830.1 KiB)
-[1/2] 2026-08/invoice_202608_02.csv                  16 B  ok          0.0s
-[2/2] invoice_202608_01.csv                     830.1 KiB  ok          0.0s
-2 files: 2 transferred (830.1 KiB), 0 skipped, 0 failed  in 3.0s
+goft invoice-archive  /data/out/invoice -> /backup/invoice  （2 件、830.1 KiB）
+[1/2] 2026-08/invoice_202608_02.csv                  16 B  完了        0.0s
+[2/2] invoice_202608_01.csv                     830.1 KiB  完了        0.0s
+2 件: 転送 2（830.1 KiB）、スキップ 0、失敗 0  3.0 秒
 ```
 
 ヘッダーには URL ではなく2つのパスがそのまま並びます。ログでも同じです。
@@ -39,16 +39,16 @@ goft invoice-archive  /data/out/invoice -> /backup/invoice  (2 files, 830.1 KiB)
 ## `goft test`
 
 ```console
-config        /etc/goft/invoice-archive.yaml  OK
-local         /data/out/invoice               OK  readable and writable
-resolve       path = /backup/invoice          (yaml)
-remote        /backup/invoice                 OK
-recv (list)   0 entries                       OK
-send (write)  writable                        OK
+設定          /etc/goft/invoice-archive.yaml  OK
+ローカル      /data/out/invoice               OK  読み書き可能
+解決          path = /backup/invoice          (yaml)
+リモート      /backup/invoice                 OK
+受信（一覧）  0 件                            OK
+送信（書込）  書き込み可能                    OK
 ```
 
-`connect` の行はありません。接続する相手がいないからです。項目名は `remote` になり、使用するディレクトリを表示します。
-`resolve` が1行しかないのも同じ理由です。解決すべきホストもポートも資格情報もありません。
+「接続」の行はありません。接続する相手がいないからです。項目名は「リモート」になり、使用するディレクトリを表示します。
+「解決」が1行しかないのも同じ理由です。解決すべきホストもポートも資格情報もありません。
 
 ## 実行前に検証されること
 

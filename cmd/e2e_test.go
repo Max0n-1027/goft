@@ -66,7 +66,7 @@ func (s *scenario) run(args ...string) int {
 // resetFlags clears the package level flag state between runs, which cobra
 // keeps across Execute calls.
 func resetFlags() {
-	flagConfig, flagLogLevel, flagLogFile = "", "", ""
+	flagConfig, flagLogLevel, flagLogFile, flagLang = "", "", "", ""
 	flagConsole, flagNoConsole, flagDryRun = false, false, false
 
 	// Setting the variables back is not enough: pflag also records that a flag
@@ -78,7 +78,7 @@ func resetFlags() {
 		cmds = append(cmds, cmds[i].Commands()...)
 	}
 	for _, c := range append(cmds, rootCmd) {
-		for _, name := range []string{"config", "log-level", "log-file", "console", "no-console", "dry-run"} {
+		for _, name := range []string{"config", "log-level", "log-file", "console", "no-console", "dry-run", "lang"} {
 			if f := c.Flags().Lookup(name); f != nil {
 				f.Changed = false
 			}

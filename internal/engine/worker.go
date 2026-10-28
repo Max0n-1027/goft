@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -15,6 +14,7 @@ import (
 
 	"goft/internal/config"
 	"goft/internal/fsys"
+	"goft/internal/i18n"
 	"goft/internal/logging"
 	"goft/internal/postact"
 	"goft/internal/verify"
@@ -92,7 +92,7 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 	if t.collidesWith != "" {
 		// fs.ErrInvalid, like a name Windows cannot store: it is the name that
 		// is the problem, and it would be the problem on every attempt.
-		return fail(fmt.Errorf("%w: %s and %s differ only in case, which the destination does not distinguish, so neither is sent",
+		return fail(i18n.Errorf("%w: %s and %s differ only in case, which the destination does not distinguish, so neither is sent",
 			fs.ErrInvalid, t.file.Path, t.collidesWith))
 	}
 
@@ -148,7 +148,7 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 	// the check that can.
 	if sent != t.file.Size {
 		e.discard(ctx, c.dst, tmp)
-		return fail(fmt.Errorf("%w: %d bytes when it settled, %d read", ErrSourceChanged, t.file.Size, sent))
+		return fail(i18n.Errorf("%w: %d bytes when it settled, %d read", ErrSourceChanged, t.file.Size, sent))
 	}
 
 	// When the source is about to be deleted or moved, it is also looked at
@@ -162,7 +162,7 @@ func (e *Engine) transfer(ctx context.Context, c *conn, t target, idx *destIndex
 			var err error
 			sentFrom, err = c.src.Stat(ctx, name)
 			if err == nil && sentFrom.Size != sent {
-				err = fmt.Errorf("%w: %d bytes read, %d there now", ErrSourceChanged, sent, sentFrom.Size)
+				err = i18n.Errorf("%w: %d bytes read, %d there now", ErrSourceChanged, sent, sentFrom.Size)
 			}
 			return err
 		})
@@ -326,7 +326,7 @@ func (e *Engine) publish(ctx context.Context, dst fsys.FS, tmp, name string) (sk
 	// will not rename onto a name that is taken, and it would refuse the same
 	// way on the next attempt.
 	if rmErr := dst.Remove(ctx, name); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
-		return false, fmt.Errorf("%w (could not clear the destination first: %w)", err, rmErr)
+		return false, i18n.Errorf("%w (could not clear the destination first: %w)", err, rmErr)
 	}
 	return false, dst.Rename(ctx, tmp, name)
 }
@@ -378,7 +378,7 @@ func (e *Engine) sourceStill(ctx context.Context, c *conn, name string, want fsy
 		return err
 	}
 	if now.Size != want.Size || (compareTime && !now.ModTime.Equal(want.ModTime)) {
-		return fmt.Errorf("%w: it was modified after being sent, so it was left in place (%d bytes then, %d now)",
+		return i18n.Errorf("%w: it was modified after being sent, so it was left in place (%d bytes then, %d now)",
 			ErrSourceChanged, want.Size, now.Size)
 	}
 	return nil

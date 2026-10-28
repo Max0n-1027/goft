@@ -18,6 +18,7 @@ import (
 	"goft/internal/console"
 	"goft/internal/engine"
 	"goft/internal/fsys"
+	"goft/internal/i18n"
 	"goft/internal/logging"
 )
 
@@ -46,24 +47,43 @@ func startupError(err error) error { return &exitError{code: 2, err: err} }
 
 // transferError marks a run that completed with failed files.
 func transferError(n int) error {
-	return &exitError{code: 1, err: fmt.Errorf("%d file(s) failed", n)}
+	return &exitError{code: 1, err: i18n.Errorf("%d file(s) failed", n)}
 }
 
 var rootCmd = &cobra.Command{
 	Use:           "goft",
-	Short:         "Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory",
+	Short:         i18n.N("Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory"),
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
 
 func init() {
+	// The language is settled once the flags are read and before any command
+	// runs. This is set here rather than in the literal above because it
+	// reaches back to rootCmd.
+	rootCmd.PersistentPreRunE = func(*cobra.Command, []string) error {
+		if err := applyLanguage(); err != nil {
+			return startupError(err)
+		}
+		return nil
+	}
+
 	pf := rootCmd.PersistentFlags()
-	pf.StringVarP(&flagConfig, "config", "c", "", "path to the job configuration file")
-	pf.StringVar(&flagLogLevel, "log-level", "", "override log.level (debug | info | warn | error)")
-	pf.StringVar(&flagLogFile, "log-file", "", "override log.path")
-	pf.BoolVar(&flagConsole, "console", false, "force human readable output on stdout")
-	pf.BoolVar(&flagNoConsole, "no-console", false, "suppress human readable output on stdout")
+	pf.StringVarP(&flagConfig, "config", "c", "", i18n.N("path to the job configuration file"))
+	pf.StringVar(&flagLogLevel, "log-level", "", i18n.N("override log.level (debug | info | warn | error)"))
+	pf.StringVar(&flagLogFile, "log-file", "", i18n.N("override log.path"))
+	pf.BoolVar(&flagConsole, "console", false, i18n.N("force human readable output on stdout"))
+	pf.BoolVar(&flagNoConsole, "no-console", false, i18n.N("suppress human readable output on stdout"))
+	pf.StringVar(&flagLang, "lang", "", i18n.N("language to write in, en or ja (default: from GOFT_LANG or the locale)"))
 	rootCmd.MarkFlagsMutuallyExclusive("console", "no-console")
+
+	// Help is shown without running the command, so it settles the language
+	// itself; by the time it is called the flags, --lang among them, are read.
+	help := rootCmd.HelpFunc()
+	rootCmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		_ = applyLanguage()
+		help(c, args)
+	})
 }
 
 // Execute runs the command line and returns the process exit code.
@@ -72,7 +92,10 @@ func Execute() int {
 	if err == nil {
 		return 0
 	}
-	fmt.Fprintln(os.Stderr, "goft: "+err.Error())
+	// A command line cobra could not parse never reached the point where the
+	// language is settled, so settle it now to report the error in it.
+	_ = applyLanguage()
+	fmt.Fprintln(os.Stderr, "goft: "+tr.Error(err))
 
 	var ee *exitError
 	if errors.As(err, &ee) {
@@ -101,7 +124,7 @@ func findConfig() (string, error) {
 			return c, nil
 		}
 	}
-	return "", fmt.Errorf("no configuration found; looked at %v (use --config)", candidates)
+	return "", i18n.Errorf("no configuration found; looked at %v (use --config)", candidates)
 }
 
 // job holds everything one command needs to run.
@@ -124,10 +147,10 @@ func loadConfig(dir config.Direction) (*config.Config, error) {
 		return nil, err
 	}
 	if err := config.Validate(cfg); err != nil {
-		return nil, fmt.Errorf("invalid configuration %s:\n%w", path, err)
+		return nil, i18n.Errorf("invalid configuration %s:\n%w", path, err)
 	}
 	if err := config.ValidateForDirection(cfg, dir); err != nil {
-		return nil, fmt.Errorf("invalid configuration %s: %w", path, err)
+		return nil, i18n.Errorf("invalid configuration %s: %w", path, err)
 	}
 	if flagLogFile != "" {
 		if abs, err := filepath.Abs(flagLogFile); err == nil {
@@ -138,7 +161,7 @@ func loadConfig(dir config.Direction) (*config.Config, error) {
 	}
 	if flagLogLevel != "" {
 		if _, err := config.ParseLevel(flagLogLevel); err != nil {
-			return nil, fmt.Errorf("--log-level: %w", err)
+			return nil, i18n.Errorf("--log-level: %w", err)
 		}
 		cfg.Log.Level = flagLogLevel
 	}
@@ -190,7 +213,7 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 	// them rather than before.
 	j.logConfiguration()
 	for _, w := range config.Warnings(cfg) {
-		log.Warn(w, logging.KeyEvent, logging.EventLifecycle)
+		log.Warn(w.String(), logging.KeyEvent, logging.EventLifecycle)
 	}
 	if err := reportResolution(log, cfg.Remote); err != nil {
 		j.close()
@@ -220,6 +243,7 @@ func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
 	if withConsole {
 		j.console = console.New(console.Options{
 			Writer:    os.Stdout,
+			Printer:   tr,
 			Level:     level,
 			Color:     term.IsTerminal(int(os.Stdout.Fd())),
 			Job:       cfg.Name,
@@ -248,13 +272,14 @@ func reportResolution(log *slog.Logger, remote config.Remote) error {
 	if err != nil {
 		return err
 	}
+	// The log is in English whatever language the console speaks.
 	for _, w := range resolved.Warnings {
-		log.Warn(w, logging.KeyEvent, logging.EventConnect)
+		log.Warn(w.String(), logging.KeyEvent, logging.EventConnect)
 	}
 	for _, t := range resolved.Trace {
 		log.Debug("resolved connection setting",
 			logging.KeyEvent, logging.EventConnect,
-			"field", t.Field, "value", t.Value, "source", t.Source)
+			"field", t.Field, "value", t.Display(i18n.English), "source", t.Source)
 	}
 	return nil
 }
@@ -290,7 +315,7 @@ func runOnce(ctx context.Context, dir config.Direction, dryRun bool) error {
 		// Stopped on request. The files under way were finished; the cycle's
 		// own summary, if it got that far, says what was left.
 		j.log.Warn("interrupted", logging.KeyEvent, logging.EventLifecycle)
-		return startupError(errors.New("interrupted before the run was complete"))
+		return startupError(i18n.Errorf("interrupted before the run was complete"))
 	case err != nil:
 		j.log.Error("run failed", logging.KeyEvent, logging.EventLifecycle, logging.KeyError, err.Error())
 		return startupError(err)

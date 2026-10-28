@@ -9,18 +9,19 @@ import (
 	"github.com/spf13/cobra"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 )
 
 var flagDryRun bool
 
 func addDryRun(c *cobra.Command) *cobra.Command {
-	c.Flags().BoolVar(&flagDryRun, "dry-run", false, "list what would be transferred without transferring anything")
+	c.Flags().BoolVar(&flagDryRun, "dry-run", false, i18n.N("list what would be transferred without transferring anything"))
 	return c
 }
 
 var sendCmd = addDryRun(&cobra.Command{
 	Use:   "send",
-	Short: "Transfer from the local directory to the other side once",
+	Short: i18n.N("Transfer from the local directory to the other side once"),
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())
@@ -31,7 +32,7 @@ var sendCmd = addDryRun(&cobra.Command{
 
 var recvCmd = addDryRun(&cobra.Command{
 	Use:   "recv",
-	Short: "Transfer from the other side to the local directory once",
+	Short: i18n.N("Transfer from the other side to the local directory once"),
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())
@@ -42,9 +43,9 @@ var recvCmd = addDryRun(&cobra.Command{
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
-	Short: "Watch a directory and transfer continuously",
-	Long: "Watch a directory and transfer continuously.\n\n" +
-		"Choose a direction with `goft serve send` or `goft serve recv`.",
+	Short: i18n.N("Watch a directory and transfer continuously"),
+	Long: i18n.N("Watch a directory and transfer continuously.\n\n" +
+		"Choose a direction with `goft serve send` or `goft serve recv`."),
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		return cmd.Help()
@@ -53,7 +54,7 @@ var serveCmd = &cobra.Command{
 
 var serveSendCmd = addDryRun(&cobra.Command{
 	Use:   "send",
-	Short: "Watch the local directory and transfer to the other side",
+	Short: i18n.N("Watch the local directory and transfer to the other side"),
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())
@@ -64,7 +65,7 @@ var serveSendCmd = addDryRun(&cobra.Command{
 
 var serveRecvCmd = addDryRun(&cobra.Command{
 	Use:   "recv",
-	Short: "Watch the other side and transfer to the local directory",
+	Short: i18n.N("Watch the other side and transfer to the local directory"),
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, _ []string) error {
 		ctx, stop := signalContext(cmd.Context())

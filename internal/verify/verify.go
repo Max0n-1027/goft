@@ -13,6 +13,7 @@ import (
 
 	"goft/internal/config"
 	"goft/internal/fsys"
+	"goft/internal/i18n"
 )
 
 // Format renders a hash the way it appears in logs.
@@ -71,15 +72,15 @@ func Identical(ctx context.Context, method config.Verify, src fsys.FS, srcName s
 		}
 		srcHash, err := HashFile(ctx, src, srcName)
 		if err != nil {
-			return Comparison{}, fmt.Errorf("hash source: %w", err)
+			return Comparison{}, i18n.Errorf("hash source: %w", err)
 		}
 		dstHash, err := HashFile(ctx, dst, dstName)
 		if err != nil {
-			return Comparison{}, fmt.Errorf("hash destination: %w", err)
+			return Comparison{}, i18n.Errorf("hash destination: %w", err)
 		}
 		return Comparison{Same: srcHash == dstHash, SrcHash: srcHash, DstHash: dstHash, Hashed: true}, nil
 	default:
-		return Comparison{}, fmt.Errorf("unknown verify method %q", method)
+		return Comparison{}, i18n.Errorf("unknown verify method %q", method)
 	}
 }
 
@@ -98,7 +99,7 @@ func Transferred(ctx context.Context, method config.Verify, dst fsys.FS, name st
 			return 0, err
 		}
 		if fi.Size != srcSize {
-			return 0, fmt.Errorf("size mismatch: sent %d bytes, destination has %d", srcSize, fi.Size)
+			return 0, i18n.Errorf("size mismatch: sent %d bytes, destination has %d", srcSize, fi.Size)
 		}
 		return 0, nil
 	case config.VerifyHash:
@@ -107,10 +108,10 @@ func Transferred(ctx context.Context, method config.Verify, dst fsys.FS, name st
 			return 0, err
 		}
 		if dstHash != srcHash {
-			return dstHash, fmt.Errorf("hash mismatch: sent %s, destination has %s", Format(srcHash), Format(dstHash))
+			return dstHash, i18n.Errorf("hash mismatch: sent %s, destination has %s", Format(srcHash), Format(dstHash))
 		}
 		return dstHash, nil
 	default:
-		return 0, fmt.Errorf("unknown verify method %q", method)
+		return 0, i18n.Errorf("unknown verify method %q", method)
 	}
 }

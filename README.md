@@ -356,11 +356,11 @@ changed underneath it.
 
 `go test ./...` passes on Windows as it does elsewhere. Behaviour that only
 exists there — locked files, the names Windows will not store, `%USERPROFILE%`,
-paths past `MAX_PATH` — is covered by the `_windows_test.go` files, which are
-built only on Windows. Going the other way, a test whose expectations are those
-of a POSIX file system calls `requirePOSIX` and says why, so it reports as
-skipped rather than failing on Windows; each of those has a Windows counterpart
-asserting what the same code does there instead.
+paths past `MAX_PATH`, the display language — is covered by the
+`_windows_test.go` files, which are built only on Windows. Going the other way,
+a test whose expectations are those of a POSIX file system calls `requirePOSIX`
+and says why, so it reports as skipped rather than failing on Windows; each of
+those has a Windows counterpart asserting what the same code does there instead.
 
 The ssh-agent tests there serve the agent protocol on a named pipe of their
 own, the way the OpenSSH Authentication Agent service does, so they need no
@@ -399,6 +399,26 @@ whoever is watching. Single runs print it by default, `serve` does not, and
 `serve` reports a cycle once it is over, and stays silent about cycles where
 nothing moved, so a working watcher with nothing to do prints nothing at all.
 A cycle that could not run — an unreachable server, say — is always reported.
+
+### Language
+
+What goft says to a person — the console, `goft test`, `--help` and error
+messages — is in English or Japanese. `--lang en|ja` chooses, then the
+`GOFT_LANG` environment variable, then the locale (`LANGUAGE`, `LC_ALL`,
+`LC_MESSAGES`, `LANG`), then on Windows the account's display language;
+anything else is English. A value other than `en` or `ja` in `--lang` or
+`GOFT_LANG` is an error.
+
+```bash
+goft --lang ja test          # 日本語で
+LANG=C goft send             # in English, whatever the session uses
+```
+
+The log is in English whatever the language, so that the same event is always
+written the same way and a search or an alert does not depend on who started
+the job. Setting names, and what the operating system or a library reports,
+appear as they are in either language. See
+[What a run looks like on screen](docs/console-output.md#language).
 
 Both outputs are UTF-8, the log because JSON is defined that way and the console
 because a file name is printed as it is stored. A Windows console left on its
@@ -477,7 +497,7 @@ from real runs:
 - [Authenticating with ssh-agent](docs/ssh-agent.md) — where the agent is found, which keys are offered, running as a service
 - [The life of one file](docs/transfer-lifecycle.md) — temporary name, verification, rename, post-transfer actions, retries
 - [A log, line by line](docs/log-example.md) — a real log explained record by record
-- [What a run looks like on screen](docs/console-output.md) — `goft test`, `--dry-run`, a transfer
+- [What a run looks like on screen](docs/console-output.md) — `goft test`, `--dry-run`, a transfer, the language it is shown in
 
 `go doc` covers the command and every package:
 

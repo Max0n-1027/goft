@@ -1,9 +1,10 @@
 package config
 
 import (
-	"fmt"
 	"log/slog"
 	"strings"
+
+	"goft/internal/i18n"
 )
 
 // ParseLevel converts a configured level name into a slog.Level.
@@ -21,6 +22,6 @@ func ParseLevel(name string) (slog.Level, error) {
 	case "error":
 		return slog.LevelError, nil
 	default:
-		return 0, fmt.Errorf("%q is invalid (debug | info | warn | error)", name)
+		return 0, i18n.Errorf("%q is invalid (debug | info | warn | error)", name)
 	}
 }

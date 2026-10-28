@@ -20,6 +20,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 
 	"goft/internal/config"
+	"goft/internal/i18n"
 	"goft/internal/sftptest"
 )
 
@@ -88,7 +89,7 @@ func TestTheAgentsKeyAuthenticates(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, ok := traceValue(res, "ssh_agent")
-	if !ok || got.Value != sock+" (holds 1 key)" || got.Source != SourceEnv {
+	if !ok || got.Display(i18n.English) != sock+" (holds 1 key)" || got.Source != SourceEnv {
 		t.Errorf("ssh_agent trace = %+v, want %s (holds 1 key) from %s", got, sock, SourceEnv)
 	}
 }
@@ -264,8 +265,8 @@ func TestNamingAPrivateKeyLimitsTheAgentToIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := traceValue(res, "ssh_agent"); got.Value != sock+" (offers 0 of the 1 key it holds)" {
-		t.Errorf("ssh_agent trace = %q, want it to say the agent's key is not offered", got.Value)
+	if got, _ := traceValue(res, "ssh_agent"); got.Display(i18n.English) != sock+" (offers 0 of the 1 key it holds)" {
+		t.Errorf("ssh_agent trace = %q, want it to say the agent's key is not offered", got.Display(i18n.English))
 	}
 }
 
@@ -336,7 +337,7 @@ func TestASkippedKeySaysTheAgentDoesNotHoldIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.KeyFiles) != 0 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "ssh-agent does not hold it") {
+	if len(res.KeyFiles) != 0 || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0].String(), "ssh-agent does not hold it") {
 		t.Errorf("key files = %v, warnings = %v; want the key skipped, naming the agent", res.KeyFiles, res.Warnings)
 	}
 }
@@ -351,7 +352,7 @@ func TestAnAgentThatCannotBeReachedIsAWarning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Agent != "" || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], gone) {
+	if res.Agent != "" || len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0].String(), gone) {
 		t.Errorf("agent = %q, warnings = %v; want no agent, and one warning naming %s", res.Agent, res.Warnings, gone)
 	}
 	if err := connect(r); err != nil {

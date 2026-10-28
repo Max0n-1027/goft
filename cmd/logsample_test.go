@@ -18,8 +18,22 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"goft/internal/console"
+	"goft/internal/i18n"
 	"goft/internal/sftptest"
 )
+
+// sampleLanguage puts the console samples into the language GOFT_SAMPLE_LANG
+// names, so that the Japanese pages quote what goft says in Japanese:
+//
+//	GOFT_LOG_SAMPLE=/tmp/sample/ja GOFT_SAMPLE_LANG=ja go test ./cmd -run 'TestGenerate(Console|Local|Agent)Sample'
+//
+// Without it the samples are in English. The logs are in English either way.
+func sampleLanguage(t *testing.T) {
+	if lang := os.Getenv("GOFT_SAMPLE_LANG"); lang != "" {
+		t.Setenv(i18n.EnvLang, lang)
+	}
+}
 
 // TestGenerateLogSample writes the log files quoted in docs/log-example.md, so
 // that the documented output is a real run rather than something typed out by
@@ -197,6 +211,7 @@ func TestGenerateConsoleSample(t *testing.T) {
 	if out == "" {
 		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
 	}
+	sampleLanguage(t)
 
 	localDir := t.TempDir()
 	remoteDir := t.TempDir()
@@ -386,35 +401,17 @@ func midTransferListing(t *testing.T, dir string, transfer func()) string {
 }
 
 // realign re-pads the columns of a table whose values were rewritten, so that
-// the sample reads the way the command's own output does.
+// the sample reads the way the command's own output does. It lays the cells
+// out again through console.Table, which goft test itself prints through, so
+// a Japanese sample lines up the way the real output does.
 func realign(text string) string {
 	sep := regexp.MustCompile(` {2,}`)
-	var rows [][]string
+	var tab console.Table
 	for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
-		rows = append(rows, sep.Split(strings.TrimRight(line, " "), -1))
+		tab.Row(sep.Split(strings.TrimRight(line, " "), -1)...)
 	}
-
-	var width []int
-	for _, row := range rows {
-		for i, cell := range row[:max(len(row)-1, 0)] {
-			for len(width) <= i {
-				width = append(width, 0)
-			}
-			width[i] = max(width[i], len(cell))
-		}
-	}
-
 	var b strings.Builder
-	for _, row := range rows {
-		for i, cell := range row {
-			if i == len(row)-1 {
-				b.WriteString(cell)
-				break
-			}
-			b.WriteString(cell + strings.Repeat(" ", width[i]-len(cell)+2))
-		}
-		b.WriteString("\n")
-	}
+	_, _ = tab.WriteTo(&b)
 	return b.String()
 }
 
@@ -447,6 +444,7 @@ func TestGenerateLocalSample(t *testing.T) {
 	if out == "" {
 		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
 	}
+	sampleLanguage(t)
 
 	src := t.TempDir()
 	dst := t.TempDir()
@@ -611,6 +609,7 @@ func TestGenerateAgentSample(t *testing.T) {
 	if out == "" {
 		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
 	}
+	sampleLanguage(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)

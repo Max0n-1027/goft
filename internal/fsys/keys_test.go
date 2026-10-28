@@ -160,7 +160,7 @@ func TestAConfiguredKeyThatCannotBeUnlockedIsAnError(t *testing.T) {
 
 func warned(res *Resolved, substr string) bool {
 	for _, w := range res.Warnings {
-		if strings.Contains(w, substr) {
+		if strings.Contains(w.String(), substr) {
 			return true
 		}
 	}

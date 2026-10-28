@@ -5,13 +5,15 @@ import (
 	"errors"
 	"io/fs"
 	"net/textproto"
+
+	"goft/internal/i18n"
 )
 
 // ErrSourceChanged reports a source file that changed between settling and the
 // end of its transfer: its writer was still at work. Nothing that was read is
 // published under the real name, and a source in that state is never deleted or
 // moved.
-var ErrSourceChanged = errors.New("the source changed while it was being transferred")
+var ErrSourceChanged = i18n.Errorf("the source changed while it was being transferred")
 
 // Retryable reports whether another attempt at err could plausibly succeed.
 //

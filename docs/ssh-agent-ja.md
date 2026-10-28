@@ -20,20 +20,21 @@ remote:
 表示します。
 
 ```console
-config        /etc/goft/invoice-upload.yaml                             OK
-local         /data/out/invoice                                         OK  readable and writable
-resolve       host = invoice-sftp                                       (yaml)
-resolve       port = 22                                                 (yaml)
-resolve       user = uploader                                           (yaml)
-resolve       ssh_agent = /run/user/1000/ssh-agent.sock (holds 2 keys)  (env)
-resolve       known_hosts = /home/svc-transfer/.ssh/known_hosts         (yaml)
-connect       sftp://invoice-sftp:22/upload/invoice                     OK
-recv (list)   0 entries                                                 OK
-send (write)  writable                                                  OK
+設定          /etc/goft/invoice-upload.yaml                              OK
+ローカル      /data/out/invoice                                          OK  読み書き可能
+解決          host = invoice-sftp                                        (yaml)
+解決          port = 22                                                  (yaml)
+解決          user = uploader                                            (yaml)
+解決          ssh_agent = /run/user/1000/ssh-agent.sock (鍵を 2 本保持)  (env)
+解決          known_hosts = /home/svc-transfer/.ssh/known_hosts          (yaml)
+接続          sftp://invoice-sftp:22/upload/invoice                      OK
+受信（一覧）  0 件                                                       OK
+送信（書込）  書き込み可能                                               OK
 ```
 
 同じ内容は debug レベルのログにも、`field` が `ssh_agent` の
-`resolved connection setting` レコードとして残ります。
+`resolved connection setting` レコードとして残ります。ログでは `/run/user/1000/ssh-agent.sock (holds 2 keys)`
+のように英語で記録します。
 
 ## エージェントを探す順番
 
@@ -59,7 +60,7 @@ send (write)  writable                                                  OK
 ログと `goft test` に警告として出し、ジョブはエージェントなしで続けます。
 
 ```console
-warning       the ssh-agent at /run/user/1000/ssh-agent.sock cannot be used, so none of its keys are offered: dial unix /run/user/1000/ssh-agent.sock: connect: no such file or directory
+警告          /run/user/1000/ssh-agent.sock の ssh-agent を使えないため、その鍵は使いません: dial unix /run/user/1000/ssh-agent.sock: connect: no such file or directory
 ```
 
 エージェントへの問い合わせは接続の確立の一部なので、`connect_timeout` の対象です。
@@ -100,7 +101,7 @@ Git Bash・MSYS・Cygwin のシェルが設定した `SSH_AUTH_SOCK` は、goft 
 存在しない」場合と同じ文言で報告するため、goft は使えるエージェントの居場所を補って示します。
 
 ```console
-warning  the ssh-agent at C:/…/ssh-AbC123/agent.4711 cannot be used, so none of its keys are offered: dial unix C:/…/agent.4711: connect: A socket operation encountered a dead network. (the agent of an MSYS or Cygwin shell listens on a socket Windows cannot connect to; the OpenSSH agent for Windows listens on \\.\pipe\openssh-ssh-agent)
+警告  C:/…/ssh-AbC123/agent.4711 の ssh-agent を使えないため、その鍵は使いません: dial unix C:/…/agent.4711: connect: A socket operation encountered a dead network.（MSYS や Cygwin のシェルのエージェントは、Windows から接続できないソケットで待ち受けています。Windows 用 OpenSSH のエージェントは \\.\pipe\openssh-ssh-agent で待ち受けています）
 ```
 
 `SSH_AUTH_SOCK` を消すか、`ssh_agent` でパイプを指定すれば、OpenSSH のエージェントが
@@ -136,8 +137,8 @@ warning  the ssh-agent at C:/…/ssh-AbC123/agent.4711 cannot be used, so none o
 エージェントが持っている鍵より出す鍵が少ないときは、`goft test` がそう表示します。
 
 ```console
-resolve       private_key = /home/svc-transfer/.ssh/id_invoice                             (yaml)
-resolve       ssh_agent = /run/user/1000/ssh-agent.sock (offers 1 of the 2 keys it holds)  (env)
+解決          private_key = /home/svc-transfer/.ssh/id_invoice                              (yaml)
+解決          ssh_agent = /run/user/1000/ssh-agent.sock (保持する鍵 2 本のうち 1 本を使用)  (env)
 ```
 
 エージェントをまったく使わないときは、`use_ssh_agent: false` か、ssh_config で
@@ -150,7 +151,7 @@ resolve       ssh_agent = /run/user/1000/ssh-agent.sock (offers 1 of the 2 keys 
 かかっていても、パスワードで認証するジョブの邪魔にはなりません。
 
 ```
-skipping the key /home/uploader/.ssh/id_ed25519: it is passphrase protected, private_key_passphrase is not set, and the ssh-agent does not hold it
+鍵 /home/uploader/.ssh/id_ed25519 を使いません: パスフレーズで保護されており、private_key_passphrase が設定されておらず、ssh-agent も保持していません
 ```
 
 ## エージェントの準備

@@ -81,12 +81,12 @@ FTP サーバーから `recv` する場合は `stable_duration` に余裕を持�
 dry-run には、4つの段階を通り抜けたファイルがそのまま並びます。
 
 ```console
-goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (dry-run)
+goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  （ドライラン）
   2026-08/invoice_202608_03.csv                  17 B
   archive.dat                                 2.0 MiB
   invoice_202608_01.csv                     830.1 KiB
   invoice_202608_02.csv                     625.0 KiB
-4 files, 3.4 MiB would be transferred (nothing was sent)
+4 件、3.4 MiB を転送する予定です（何も送っていません）
 ```
 
 ここで `archive.dat` が一覧に出ているのは、dry-run が「走査で見つかったもの」を報告するからです。

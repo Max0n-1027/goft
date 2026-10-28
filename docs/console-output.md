@@ -10,6 +10,32 @@ Single runs (`send`, `recv`) print it by default. `serve` does not, since a
 watcher is usually left alone with its log. `--console` and `--no-console`
 override either way.
 
+## Language
+
+What goft says on screen — this output, `goft test`, `--help` and error
+messages — is in English or Japanese. The first of these that says anything
+decides:
+
+1. `--lang en` or `--lang ja`
+2. the `GOFT_LANG` environment variable, `en` or `ja`
+3. the locale: `LANGUAGE`, `LC_ALL`, `LC_MESSAGES` and `LANG`, read as gettext
+   reads them, so `LANG=ja_JP.UTF-8` gives Japanese and `LANG=C` English
+4. on Windows, the display language of the user's account
+
+Anything else is English. `--lang` and `GOFT_LANG` are typed for goft, so a
+value other than `en` or `ja` there is an error; a locale in some other
+language simply means English.
+
+The log is in English whatever the language: it is there to be searched and
+counted, and the same event should always be written the same way. Words that
+belong to the configuration — setting names such as `remote.host`, the sources
+`yaml` and `env` — are shown as they are in either language, and what the
+operating system or a library said, such as `permission denied`, is shown as it
+said it, inside goft's own sentence.
+
+The examples on this page are in English. The
+[Japanese page](console-output-ja.md) shows the same runs in Japanese.
+
 ## Before anything moves: `goft test`
 
 `goft test` validates the configuration, shows how each connection setting was
