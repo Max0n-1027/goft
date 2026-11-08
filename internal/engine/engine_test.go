@@ -27,7 +27,7 @@ type harness struct {
 	dstDir  string
 	src     *fsys.ErrFS
 	dst     *fsys.ErrFS
-	cfg     *config.Config
+	cfg     *config.Job
 	results []Result
 
 	mu       sync.Mutex
@@ -44,8 +44,9 @@ func newHarness(t *testing.T) *harness {
 	}
 	h.src = fsys.NewErrFS(fsys.NewLocal(h.srcDir))
 	h.dst = fsys.NewErrFS(fsys.NewLocal(h.dstDir))
-	h.cfg = &config.Config{
+	h.cfg = &config.Job{
 		Name:       "test",
+		Direction:  config.DirSend,
 		Local:      config.Local{Path: h.srcDir},
 		Remote:     config.Remote{Protocol: config.ProtocolSFTP, Host: "h", Path: "/p"},
 		Include:    []string{"*"},
@@ -93,8 +94,7 @@ func (h *harness) run() Summary {
 	h.t.Helper()
 	h.results = nil
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
+		Job: h.cfg,
 		NewSrc: func(context.Context) (fsys.FS, error) {
 			h.mu.Lock()
 			h.srcOpens++
@@ -356,9 +356,8 @@ func TestDryRunTouchesNothing(t *testing.T) {
 
 	var plan Plan
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
 		NewDst: func(context.Context) (fsys.FS, error) {
 			t.Error("a dry run must not connect to the destination")
 			return h.dst, nil
@@ -415,12 +414,11 @@ func TestMissingSourceDirectoryIsReported(t *testing.T) {
 	h.src = fsys.NewErrFS(fsys.NewLocal(filepath.Join(h.srcDir, "gone")))
 
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		Single:    true,
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Single: true,
 	})
 	if _, err := e.RunOnce(context.Background()); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("RunOnce() error = %v, want it to surface the missing directory", err)

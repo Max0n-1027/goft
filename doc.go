@@ -1,23 +1,28 @@
 /*
-Goft watches a directory and moves files over FTP, SFTP or SMB, or between two
-directories on the same machine, verifying every file it transfers.
+Goft watches directories and moves files over FTP, SFTP or SMB, or between two
+directories on the same machine, verifying every file it transfers. One process
+runs every job in its configuration, as a service, until it is stopped.
 
 Usage:
 
+	goft [flags]                    run every enabled job until stopped
+	goft --run-once <job> [flags]   run a job once; repeat for several
 	goft <command> [flags]
 
 The commands are:
 
-	send         transfer from the local directory to the other side once
-	recv         transfer from the other side to the local directory once
-	serve send   watch the local directory and transfer continuously
-	serve recv   watch the other side and transfer continuously
-	test         check the configuration and the connection without transferring
-	version      print the build information
+	jobs                  list the jobs in the configuration
+	test [job...]         check the configuration and each job's connection
+	                      without transferring anything
+	service install       register goft as a Windows service (Windows only)
+	service uninstall     stop and remove the Windows service (Windows only)
+	version               print the build information
 
-The other side is a server reached over ftp, sftp or smb, or — with
-protocol: local — a second directory on this machine. The engine does not know
-which: everything below is the same either way.
+Each job moves files one way: a send job from a local directory to the other
+side, a recv job from the other side to a local directory. The other side is a
+server reached over ftp, sftp or smb, or — with protocol: local — a second
+directory on this machine. The engine does not know which: everything below is
+the same either way.
 
 For every file it finds on the sending side, goft waits until the file has
 stopped changing, writes it to the receiving side under a temporary name,
@@ -31,34 +36,49 @@ mid-transfer leaves nothing behind but a .goft.tmp file, which the next run
 overwrites. A retry writes under a name of its own, <name>.2.goft.tmp, since the
 attempt it replaces may still be in progress at the other end.
 
-Writing onto a Windows disk — recv, or send with protocol: local — refuses a
-file whose name that platform would store as something else: a colon, which
-opens an NTFS alternate data stream, a trailing dot or space, which is dropped,
-or a reserved device name. Such a file is recorded as failed rather than
-written, because reading it back would find it again and verification would
-pass over a file no other program can see. Two files whose names differ only in
-case are not sent either when the destination cannot tell them apart;
+Writing onto a Windows disk — a recv job, or a send job with protocol: local —
+refuses a file whose name that platform would store as something else: a colon,
+which opens an NTFS alternate data stream, a trailing dot or space, which is
+dropped, or a reserved device name. Such a file is recorded as failed rather
+than written, because reading it back would find it again and verification
+would pass over a file no other program can see. Two files whose names differ
+only in case are not sent either when the destination cannot tell them apart;
 remote.case_insensitive says so for a server goft cannot ask, such as OpenSSH
 on Windows.
 
 # Configuration
 
-One YAML file describes one job, and one job runs in one process. To run several
-jobs, give each its own file and its own process. The transfer direction is not
-part of the file: it is chosen by the command.
+One YAML file describes the service and its jobs. job_files names more files,
+each holding a jobs: list and nothing else; a pattern may match nothing, while
+a name written out in full must exist.
 
-	name: invoice-upload
-	local:
-	  path: /data/out/invoice
-	remote:
-	  protocol: sftp
-	  host: invoice-sftp        # a ~/.ssh/config Host alias works here
-	  path: /upload/invoice
-	include: ["*.csv"]
-	verify: hash
-	on_exists: skip
-	post_action: move
-	move_to: /data/done/invoice
+	service:
+	  log:
+	    path: /var/log/goft/goft.log
+	job_files:
+	  - jobs.d/*.yaml
+	jobs:
+	  - name: invoice-upload
+	    direction: send
+	    local:
+	      path: /data/out/invoice
+	    remote:
+	      protocol: sftp
+	      host: invoice-sftp        # a ~/.ssh/config Host alias works here
+	      path: /upload/invoice
+	    include: ["*.csv"]
+	    post_action: move
+	    move_to: /data/done/invoice
+	    log:
+	      path: /var/log/goft/invoice-upload.log
+
+A job needs a name, unique ignoring case, and a direction, send or recv;
+enabled: false keeps the service from running it while leaving it runnable by
+name. A relative path is resolved against the directory of the file it is
+written in. Every job is checked at startup, alone and against the others —
+two jobs taking from one directory when either deletes or moves what it sends,
+or jobs passing files round in a loop, are refused — and one mistake stops goft
+starting at all.
 
 Credentials need not be written in plain text. Any ${VAR} in a value is
 replaced from the environment, and one that is not set is an error; a $ not
@@ -74,26 +94,46 @@ files:
 Run "goft test" to see the values that were resolved and where each one came
 from.
 
-goft.example.yaml documents every setting, and README.md covers the behaviour
-worth knowing before putting a job into service.
+goft.example.yaml documents every setting, README.md covers the behaviour worth
+knowing before putting a job into service, and docs/service.md how the service
+runs its jobs.
+
+# The service
+
+Without --run-once, goft runs every enabled job side by side, each watching its
+own directory, until Ctrl+C, SIGTERM or the Windows service manager stops it.
+Every job starts or none does. The service writes its own log, service.log,
+recording which configuration and jobs it started with and when it stopped;
+each job writes to its own log.
+
+Every job holds a lock while it runs, so the same job is never run by two
+processes at once: a --run-once of a job the service is running is refused with
+exit status 2. Locks are kept in service.lock_dir, by default
+%ProgramData%\goft\locks on Windows and /tmp/goft-<uid> elsewhere.
+
+On Windows, "goft service install" registers goft with the service manager, to
+run as LocalSystem, start with Windows and restart a minute after it stops on
+an error. A service has no console, so every log must name a file; starting and
+stopping are written to the event log.
 
 # Flags
 
-	-c, --config     path to the job configuration file
-	    --log-level  override log.level (debug | info | warn | error)
-	    --log-file   override log.path
+	-c, --config     path to the configuration file
+	    --run-once   run the named job once and exit; repeat for several
+	    --dry-run    list what would be transferred, without touching the
+	                 destination: for the --run-once jobs, or every enabled job
+	    --log-level  override log.level of the service and every job
+	                 (debug | info | warn | error)
 	    --console    force human readable output on stdout
 	    --no-console suppress human readable output on stdout
 	    --lang       language to write in, en or ja
-	    --dry-run    list what would be transferred, without touching the
-	                 destination (send, recv and serve)
 
 # Output
 
 The JSON Lines log is the record of what happened; the human readable output on
-stdout is for whoever is watching. Single runs print it by default and serve
-does not. When no log file is configured and the console output is on, the JSON
-log goes to stderr so that the two never mix.
+stdout is for whoever is watching. --run-once prints it by default and the
+service does not. When no log file is configured and the console output is on,
+the JSON log goes to stderr so that the two never mix.
 
 What goft says to a person — the console, goft test, help and error messages —
 is in English or Japanese: --lang decides, then GOFT_LANG, then the locale
@@ -103,15 +143,16 @@ language, so that the same event is always written the same way.
 
 # Exit status
 
-	0  finished normally, including serve stopping on a signal
+	0  finished normally, including the service stopping on a signal
 	1  the run completed but at least one file failed
 	2  the run could not be completed: bad configuration, the connection failed,
-	   or it was stopped before it finished
+	   the job was locked by another goft, or it was stopped before it finished
 
-goft test reports both directions and exits 2 only when neither works, since a
-read-only account is a good setup for recv.
+With several --run-once, the worst of them decides. goft test exits 2 when a
+job it checked cannot be used as configured; each job is checked in the
+direction it runs, so a read-only account is a good setup for a recv job.
 
-Ctrl+C or SIGTERM stops a run from starting anything new; a file already being
-transferred is finished first.
+Ctrl+C or SIGTERM stops every job from starting anything new; a file already
+being transferred is finished first.
 */
 package main

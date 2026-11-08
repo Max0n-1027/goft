@@ -51,13 +51,13 @@ simpler and wrong: `cp -p`, `rsync --times` and every other tool that preserves
 timestamps leaves the mtime at the source file's old value while the copy is
 still running, so a half-written file looks settled.
 
-A single `send` or `recv` has no earlier cycle to compare against, so it takes
-two readings `stable_duration` apart and transfers what did not change in
+A job run with `--run-once` has no earlier cycle to compare against, so it
+takes two readings `stable_duration` apart and transfers what did not change in
 between. That is why a one-shot run takes at least `stable_duration` whenever
 there is a file to look at; an empty directory, or `stable_duration: 0`, needs
 no second reading.
 
-Under `serve`, scans are `poll_interval` apart, counted from the end of the
+Under the service, scans are `poll_interval` apart, counted from the end of the
 previous cycle, and a file is picked up by the first scan that has seen it
 unchanged for `stable_duration`. Once a file stops changing it therefore waits
 for the next scan, and then for `stable_duration` rounded up to whole poll

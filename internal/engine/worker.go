@@ -476,14 +476,14 @@ func (e *Engine) report(ctx context.Context, c *Collector, r Result) {
 // direction agnostic, but a log read weeks later has to say which file on which
 // machine, so the records carry the whole location.
 func (e *Engine) source(rel string) string {
-	if e.opts.Direction == config.DirRecv {
+	if e.cfg.Direction == config.DirRecv {
 		return e.remotePath(rel)
 	}
 	return e.localPath(rel)
 }
 
 func (e *Engine) destination(rel string) string {
-	if e.opts.Direction == config.DirRecv {
+	if e.cfg.Direction == config.DirRecv {
 		return e.localPath(rel)
 	}
 	return e.remotePath(rel)

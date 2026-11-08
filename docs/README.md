@@ -1,5 +1,8 @@
 # goft documentation
 
+- [Running several jobs as a service](service.md) — the configuration, the
+  commands, locks, systemd and the Windows service, and moving from one job
+  per file.
 - [What gets transferred](file-selection.md) — which files a cycle picks up:
   names, settling, the size cap.
 - [The life of one file](transfer-lifecycle.md) — the temporary name,

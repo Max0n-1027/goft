@@ -6,14 +6,14 @@ import (
 	"strings"
 )
 
-// LogValue renders the whole job configuration as one record, so that a
+// LogValue renders the whole job as one record, so that a
 // transfer can be explained afterwards without the file being at hand: what was
 // picked up, where it went, how it was verified and what became of the source.
 //
 // Defaults are included, because a setting that was never written in the file
 // still decided what happened. Secrets are reported as set, never as their
 // value.
-func (c *Config) LogValue() slog.Value {
+func (c *Job) LogValue() slog.Value {
 	attrs := []slog.Attr{
 		slog.String("file", c.SourceFile),
 		slog.String("name", c.Name),

@@ -4,20 +4,22 @@
 それ以外はまったく同じジョブです。走査も、安定化判定も、検証も、一時名も、ログも変わりません。
 
 ```yaml
-name: invoice-archive
-local:
-  path: /data/out/invoice
-remote:
-  protocol: local
-  path: /backup/invoice
-recursive: true
-include: ["*.csv"]
-verify: hash
-on_exists: skip
+jobs:
+  - name: invoice-archive
+    direction: send
+    local:
+      path: /data/out/invoice
+    remote:
+      protocol: local
+      path: /backup/invoice
+    recursive: true
+    include: ["*.csv"]
+    verify: hash
+    on_exists: skip
 ```
 
-`send` は `local.path` から `remote.path` へ、`recv` はその逆にコピーします。
-方向を決めるのはコマンドで、sftp のときとまったく同じです。`serve send` は前者を監視し、ファイルが届くたびにコピーします。
+`send` のジョブは `local.path` から `remote.path` へ、`recv` のジョブはその逆にコピーします。sftp のときとまったく同じです。
+サービスは前者を監視し、ファイルが届くたびにコピーします。`--run-once invoice-archive` はその時点にあるものをコピーして終了します。
 
 ## 実行するとこうなります
 
@@ -39,12 +41,13 @@ goft invoice-archive  /data/out/invoice -> /backup/invoice  （2 件、830.1 KiB
 ## `goft test`
 
 ```console
-設定          /etc/goft/invoice-archive.yaml  OK
-ローカル      /data/out/invoice               OK  読み書き可能
-解決          path = /backup/invoice          (yaml)
-リモート      /backup/invoice                 OK
-受信（一覧）  0 件                            OK
-送信（書込）  書き込み可能                    OK
+設定          /etc/goft/goft.yaml     OK
+
+ジョブ        invoice-archive         send
+ローカル      /data/out/invoice       OK  読み書き可能
+解決          path = /backup/invoice  (yaml)
+リモート      /backup/invoice         OK
+送信（書込）  書き込み可能            OK
 ```
 
 「接続」の行はありません。接続する相手がいないからです。項目名は「リモート」になり、使用するディレクトリを表示します。

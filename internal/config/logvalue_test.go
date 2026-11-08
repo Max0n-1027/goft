@@ -10,7 +10,7 @@ import (
 )
 
 // record logs cfg and returns the decoded configuration group.
-func record(t *testing.T, cfg *Config) map[string]any {
+func record(t *testing.T, cfg *Job) map[string]any {
 	t.Helper()
 	var buf bytes.Buffer
 	slog.New(slog.NewJSONHandler(&buf, nil)).Info("starting", "config", cfg)
@@ -27,7 +27,7 @@ func record(t *testing.T, cfg *Config) map[string]any {
 }
 
 func TestConfigRecordNeverCarriesASecret(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Remote.Password = Secret("hunter2")
 	cfg.Remote.PrivateKeyPassphrase = Secret("open sesame")
 
@@ -48,7 +48,7 @@ func TestConfigRecordNeverCarriesASecret(t *testing.T) {
 }
 
 func TestConfigRecordOmitsSecretsThatWereNeverSet(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 
 	remote := record(t, cfg)["remote"].(map[string]any)
 	if _, ok := remote["password"]; ok {
@@ -58,7 +58,7 @@ func TestConfigRecordOmitsSecretsThatWereNeverSet(t *testing.T) {
 
 func TestConfigRecordMakesPathsAbsolute(t *testing.T) {
 	dir := t.TempDir()
-	cfg := validConfig(dir)
+	cfg := validJob(dir)
 	cfg.Local.Path = "./out"
 	cfg.MoveTo = "./done"
 	cfg.SourceFile = filepath.Join(dir, "job.yaml")
@@ -76,7 +76,7 @@ func TestConfigRecordMakesPathsAbsolute(t *testing.T) {
 }
 
 func TestConfigRecordLeavesTildePathsAlone(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Remote.KnownHosts = "~/.ssh/known_hosts"
 
 	remote := record(t, cfg)["remote"].(map[string]any)
@@ -90,7 +90,7 @@ func TestConfigRecordLeavesTildePathsAlone(t *testing.T) {
 func TestConfigRecordIncludesDefaultsThatWereNeverWritten(t *testing.T) {
 	local := t.TempDir()
 	p := writeConfig(t, "local:\n  path: "+local+"\nremote:\n  protocol: sftp\n  host: h\n  path: /p\n")
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestConfigRecordIncludesDefaultsThatWereNeverWritten(t *testing.T) {
 }
 
 func TestConfigRecordShowsTheSSHAgentSettings(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	remote := record(t, cfg)["remote"].(map[string]any)
 	if _, ok := remote["use_ssh_agent"]; ok {
 		t.Error("use_ssh_agent should appear only when the agent was turned off")
@@ -132,7 +132,7 @@ func TestConfigRecordShowsTheSSHAgentSettings(t *testing.T) {
 }
 
 func TestConfigRecordShowsADeclaredCase(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	remote := record(t, cfg)["remote"].(map[string]any)
 	if _, ok := remote["case_insensitive"]; ok {
 		t.Error("case_insensitive should appear only when it was set")

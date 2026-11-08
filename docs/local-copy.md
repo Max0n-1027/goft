@@ -5,21 +5,24 @@ Everything else is the same job: the same scan, the same settling, the same
 verification, the same temporary name and the same log.
 
 ```yaml
-name: invoice-archive
-local:
-  path: /data/out/invoice
-remote:
-  protocol: local
-  path: /backup/invoice
-recursive: true
-include: ["*.csv"]
-verify: hash
-on_exists: skip
+jobs:
+  - name: invoice-archive
+    direction: send
+    local:
+      path: /data/out/invoice
+    remote:
+      protocol: local
+      path: /backup/invoice
+    recursive: true
+    include: ["*.csv"]
+    verify: hash
+    on_exists: skip
 ```
 
-`send` copies from `local.path` to `remote.path`, `recv` the other way round —
-the direction is the command, exactly as it is for sftp. `serve send` watches
-the first directory and copies as files arrive.
+A `send` job copies from `local.path` to `remote.path`, a `recv` job the other
+way round, exactly as it would for sftp. The service watches the first
+directory and copies as files arrive; `--run-once invoice-archive` copies what
+is there now and exits.
 
 ## What it looks like
 
@@ -42,12 +45,13 @@ full.
 ## `goft test`
 
 ```console
-config        /etc/goft/invoice-archive.yaml  OK
-local         /data/out/invoice               OK  readable and writable
-resolve       path = /backup/invoice          (yaml)
-remote        /backup/invoice                 OK
-recv (list)   0 entries                       OK
-send (write)  writable                        OK
+config        /etc/goft/goft.yaml     OK
+
+job           invoice-archive         send
+local         /data/out/invoice       OK  readable and writable
+resolve       path = /backup/invoice  (yaml)
+remote        /backup/invoice         OK
+send (write)  writable                OK
 ```
 
 There is no `connect` line, because nothing is dialled: the check is called

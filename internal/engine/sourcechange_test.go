@@ -41,13 +41,12 @@ func runWith(t *testing.T, h *harness, src, dst fsys.FS) {
 	t.Helper()
 	h.results = nil
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		Single:    true,
-		OnResult:  func(r Result) { h.results = append(h.results, r) },
+		Job:      h.cfg,
+		NewSrc:   func(context.Context) (fsys.FS, error) { return src, nil },
+		NewDst:   func(context.Context) (fsys.FS, error) { return dst, nil },
+		Logger:   slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Single:   true,
+		OnResult: func(r Result) { h.results = append(h.results, r) },
 	})
 	if _, err := e.RunOnce(context.Background()); err != nil {
 		t.Fatalf("RunOnce: %v", err)

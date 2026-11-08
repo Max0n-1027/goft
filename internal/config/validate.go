@@ -2,15 +2,17 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"goft/internal/i18n"
 )
 
-// Direction is the transfer direction, chosen by the command rather than by
-// the configuration file.
+// Direction is the way a job moves files: send, from the local side to the
+// remote, or recv, the other way.
 type Direction string
 
 // Transfer directions.
@@ -44,8 +46,10 @@ func quoted[T ~string](vals []T) string {
 	return strings.Join(out, " | ")
 }
 
-// Validate checks everything that can be decided from the configuration file
-// alone. All problems are reported together rather than one at a time.
+// Validate checks everything that can be decided from the configuration
+// alone: the service settings, each job on its own, and the jobs against each
+// other. All problems are reported together rather than one at a time, and a
+// problem with a job names the job.
 //
 // Credentials are deliberately not checked here: they may be supplied by the
 // Windows Credential Manager, ~/.netrc or ~/.ssh/config, so they can only be
@@ -54,20 +58,52 @@ func Validate(c *Config) error {
 	var errs []error
 	add := func(err error) { errs = append(errs, err) }
 
-	validateLocal(c, add)
-	validateRemote(c, add)
-	validateTransfer(c, add)
-	validateScanning(c, add)
-	validateLog(c, add)
+	if len(c.Jobs) == 0 {
+		add(i18n.Errorf("no jobs are configured in %s", c.SourceFile))
+	}
+	validateLog(c.Service.Log, "service.log", add)
+	for i, j := range c.Jobs {
+		label := j.Name
+		if strings.TrimSpace(label) == "" {
+			label = fmt.Sprintf("#%d", i+1)
+		}
+		validateJob(j, func(err error) {
+			add(i18n.Errorf("job %s: %w", label, err))
+		})
+	}
+	validateAcrossJobs(c, add)
 
 	return errors.Join(errs...)
+}
+
+// validateJob checks one job on its own.
+func validateJob(j *Job, add addFunc) {
+	if strings.TrimSpace(j.Name) == "" {
+		add(i18n.Errorf("name is required"))
+	} else if strings.ContainsFunc(j.Name, unicode.IsControl) {
+		add(i18n.Errorf("name %q contains a control character", j.Name))
+	}
+	switch {
+	case j.Direction == "":
+		add(i18n.Errorf("direction is required (%s)", quoted([]Direction{DirSend, DirRecv})))
+	case !oneOf(j.Direction, DirSend, DirRecv):
+		add(i18n.Errorf("direction %q is invalid (%s)", j.Direction, quoted([]Direction{DirSend, DirRecv})))
+	case j.Direction == DirRecv && j.PostAction == PostMove:
+		add(i18n.Errorf("post_action: move is only supported for send; use none or delete for recv"))
+	}
+
+	validateLocal(j, add)
+	validateRemote(j, add)
+	validateTransfer(j, add)
+	validateScanning(j, add)
+	validateLog(j.Log, "log", add)
 }
 
 // addFunc collects one problem. Every check takes it so that a configuration
 // with several mistakes reports all of them at once.
 type addFunc func(err error)
 
-func validateLocal(c *Config, add addFunc) {
+func validateLocal(c *Job, add addFunc) {
 	switch fi, err := os.Stat(c.Local.Path); {
 	case c.Local.Path == "":
 		add(i18n.Errorf("local.path is required"))
@@ -78,7 +114,7 @@ func validateLocal(c *Config, add addFunc) {
 	}
 }
 
-func validateRemote(c *Config, add addFunc) {
+func validateRemote(c *Job, add addFunc) {
 	if c.Remote.Path == "" {
 		add(i18n.Errorf("remote.path is required"))
 	}
@@ -119,7 +155,7 @@ func validateRemote(c *Config, add addFunc) {
 // Settings that only mean something over a network are rejected rather than
 // ignored: a job that names a host or a password for a directory on its own
 // disk is not the job its author thought they were writing.
-func validateLocalRemote(c *Config, add addFunc) {
+func validateLocalRemote(c *Job, add addFunc) {
 	for _, unused := range []struct {
 		name string
 		set  bool
@@ -162,7 +198,7 @@ func validateLocalRemote(c *Config, add addFunc) {
 	}
 }
 
-func validateTransfer(c *Config, add addFunc) {
+func validateTransfer(c *Job, add addFunc) {
 	if !oneOf(c.Verify, VerifyHash, VerifyLength, VerifyNone) {
 		add(i18n.Errorf("verify %q is invalid (%s)", c.Verify, quoted([]Verify{VerifyHash, VerifyLength, VerifyNone})))
 	}
@@ -200,7 +236,7 @@ func validateTransfer(c *Config, add addFunc) {
 	}
 }
 
-func validateScanning(c *Config, add addFunc) {
+func validateScanning(c *Job, add addFunc) {
 	if c.MaxFileSizeMB < 0 {
 		add(i18n.Errorf("max_file_size_mb must be >= 0"))
 	}
@@ -215,31 +251,22 @@ func validateScanning(c *Config, add addFunc) {
 	}
 }
 
-func validateLog(c *Config, add addFunc) {
-	if !oneOf(c.Log.Rotation, RotationSize, RotationDaily, RotationMonthly) {
-		add(i18n.Errorf("log.rotation %q is invalid (%s)", c.Log.Rotation, quoted([]Rotation{RotationSize, RotationDaily, RotationMonthly})))
+func validateLog(l Log, key string, add addFunc) {
+	if !oneOf(l.Rotation, RotationSize, RotationDaily, RotationMonthly) {
+		add(i18n.Errorf("%s.rotation %q is invalid (%s)", key, l.Rotation, quoted([]Rotation{RotationSize, RotationDaily, RotationMonthly})))
 	}
-	if _, err := ParseLevel(c.Log.Level); err != nil {
-		add(i18n.Errorf("log.level: %v", err))
+	if _, err := ParseLevel(l.Level); err != nil {
+		add(i18n.Errorf("%s.level: %v", key, err))
 	}
-	for _, f := range c.Log.Fields {
+	for _, f := range l.Fields {
 		if !oneOf(strings.ToLower(strings.TrimSpace(f)), SelectableLogFields...) {
-			add(i18n.Errorf("log.fields: %q is not a field (%s)", f, strings.Join(SelectableLogFields, " | ")))
+			add(i18n.Errorf("%s.fields: %q is not a field (%s)", key, f, strings.Join(SelectableLogFields, " | ")))
 		}
 	}
 }
 
-// ValidateForDirection checks the combinations that only make sense once the
-// command, and therefore the direction, is known.
-func ValidateForDirection(c *Config, dir Direction) error {
-	if dir == DirRecv && c.PostAction == PostMove {
-		return i18n.Errorf("post_action: move is only supported for send; use none or delete for recv")
-	}
-	return nil
-}
-
-// Warnings returns non-fatal configuration remarks worth logging at startup.
-func Warnings(c *Config) []i18n.Message {
+// Warnings returns non-fatal remarks about a job worth logging at startup.
+func Warnings(c *Job) []i18n.Message {
 	var w []i18n.Message
 	if c.StableDuration == 0 {
 		w = append(w, i18n.Msg("stable_duration is 0: files that are still being written may be transferred"))

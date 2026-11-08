@@ -1,8 +1,8 @@
 # Authenticating with ssh-agent
 
 sftp takes keys from ssh-agent the way `ssh` does. A key loaded into the agent
-with `ssh-add` signs in without its passphrase appearing in the job file, in an
-environment variable, or anywhere else goft can see — the agent does the
+with `ssh-add` signs in without its passphrase appearing in the configuration,
+in an environment variable, or anywhere else goft can see — the agent does the
 signing, and the private key never leaves it.
 
 Nothing needs to be configured. When the agent is running and holds a key the
@@ -20,7 +20,9 @@ remote:
 it holds:
 
 ```console
-config        /etc/goft/invoice-upload.yaml                             OK
+config        /etc/goft/goft.yaml                                       OK
+
+job           invoice-upload                                            send
 local         /data/out/invoice                                         OK  readable and writable
 resolve       host = invoice-sftp                                       (yaml)
 resolve       port = 22                                                 (yaml)
@@ -28,7 +30,6 @@ resolve       user = uploader                                           (yaml)
 resolve       ssh_agent = /run/user/1000/ssh-agent.sock (holds 2 keys)  (env)
 resolve       known_hosts = /home/svc-transfer/.ssh/known_hosts         (yaml)
 connect       sftp://invoice-sftp:22/upload/invoice                     OK
-recv (list)   0 entries                                                 OK
 send (write)  writable                                                  OK
 ```
 

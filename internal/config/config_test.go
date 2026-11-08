@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,11 +16,62 @@ import (
 func writeConfig(t *testing.T, body string) string {
 	t.Helper()
 	dir := t.TempDir()
-	p := filepath.Join(dir, "job.yaml")
-	if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+	p := filepath.Join(dir, "goft.yaml")
+	if err := os.WriteFile(p, []byte(asJob(body)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// asJob writes the settings of one job, given as they would stand on their
+// own, as the single item of a jobs list, with a name and a direction unless
+// the settings give their own.
+func asJob(body string) string {
+	var b strings.Builder
+	b.WriteString("jobs:\n  - ")
+	first := true
+	item := func(line string) {
+		if first {
+			b.WriteString(line + "\n")
+			first = false
+			return
+		}
+		b.WriteString("    " + line + "\n")
+	}
+	if !regexp.MustCompile(`(?m)^name:`).MatchString(body) {
+		item("name: job")
+	}
+	if !regexp.MustCompile(`(?m)^direction:`).MatchString(body) {
+		item("direction: send")
+	}
+	for _, line := range strings.Split(body, "\n") {
+		if strings.TrimSpace(line) != "" {
+			item(line)
+		}
+	}
+	return b.String()
+}
+
+// loadJob loads a configuration holding one job, and returns the job.
+func loadJob(path string) (*Job, error) {
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(cfg.Jobs) != 1 {
+		return nil, fmt.Errorf("%d jobs, want 1", len(cfg.Jobs))
+	}
+	return cfg.Jobs[0], nil
+}
+
+// validate checks one job the way Validate checks it as part of a
+// configuration.
+func validate(j *Job) error {
+	return Validate(&Config{
+		SourceFile: "goft.yaml",
+		Service:    Service{Log: Log{Level: "info", Rotation: RotationSize}},
+		Jobs:       []*Job{j},
+	})
 }
 
 func TestLoadAppliesDefaultsAndExpandsEnv(t *testing.T) {
@@ -35,7 +87,7 @@ remote:
   path: /upload
   password: ${GOFT_TEST_PASSWORD}
 `)
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,8 +101,8 @@ remote:
 	if cfg.Workers != 1 {
 		t.Errorf("workers = %d, want the default 1", cfg.Workers)
 	}
-	if cfg.Name != "job" {
-		t.Errorf("name = %q, want it derived from the file name", cfg.Name)
+	if !cfg.Enabled {
+		t.Error("enabled = false, want a job enabled unless it says otherwise")
 	}
 	if cfg.PollInterval.Seconds() != 5 {
 		t.Errorf("poll_interval = %v, want the 5s default", cfg.PollInterval)
@@ -72,11 +124,11 @@ func TestSecretNeverFormatsItself(t *testing.T) {
 
 func TestValidateRejectsMoveToInsideSource(t *testing.T) {
 	local := t.TempDir()
-	cfg := validConfig(local)
+	cfg := validJob(local)
 	cfg.PostAction = PostMove
 	cfg.MoveTo = filepath.Join(local, "done")
 
-	err := Validate(cfg)
+	err := validate(cfg)
 	if err == nil {
 		t.Fatal("move_to inside local.path must be rejected: moved files would be transferred again forever")
 	}
@@ -87,22 +139,22 @@ func TestValidateRejectsMoveToInsideSource(t *testing.T) {
 
 func TestValidateAcceptsMoveToOutsideSource(t *testing.T) {
 	local := t.TempDir()
-	cfg := validConfig(local)
+	cfg := validJob(local)
 	cfg.PostAction = PostMove
 	cfg.MoveTo = t.TempDir()
 
-	if err := Validate(cfg); err != nil {
-		t.Fatalf("Validate() = %v, want nil", err)
+	if err := validate(cfg); err != nil {
+		t.Fatalf("validate() = %v, want nil", err)
 	}
 }
 
 func TestValidateReportsEveryProblemAtOnce(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Verify = "sha256"
 	cfg.OnExists = "replace"
 	cfg.Workers = 0
 
-	err := Validate(cfg)
+	err := validate(cfg)
 	if err == nil {
 		t.Fatal("want an error")
 	}
@@ -113,26 +165,27 @@ func TestValidateReportsEveryProblemAtOnce(t *testing.T) {
 	}
 }
 
-func TestValidateForDirectionRejectsMoveOnRecv(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+func TestValidateRejectsMoveOnRecv(t *testing.T) {
+	cfg := validJob(t.TempDir())
 	cfg.PostAction = PostMove
 	cfg.MoveTo = t.TempDir()
-
-	if err := ValidateForDirection(cfg, DirRecv); err == nil {
-		t.Error("post_action: move is send-only and must be rejected for recv")
+	cfg.Direction = DirRecv
+	if err := validate(cfg); err == nil || !strings.Contains(err.Error(), "only supported for send") {
+		t.Errorf("validate() = %v, want move refused for recv", err)
 	}
-	if err := ValidateForDirection(cfg, DirSend); err != nil {
-		t.Errorf("send with move should be accepted, got %v", err)
+	cfg.Direction = DirSend
+	if err := validate(cfg); err != nil {
+		t.Errorf("validate() = %v, want move accepted for send", err)
 	}
 }
 
 func TestValidateRequiresTheSMBShare(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Remote.Protocol = ProtocolSMB
 
-	err := Validate(cfg)
+	err := validate(cfg)
 	if err == nil || !strings.Contains(err.Error(), "share") {
-		t.Fatalf("Validate() = %v, want the missing share reported", err)
+		t.Fatalf("validate() = %v, want the missing share reported", err)
 	}
 	// The credentials are not required here: a Credential Manager entry may
 	// supply them, which is only known once the connection is resolved.
@@ -146,7 +199,7 @@ func TestValidateRequiresTheSMBShare(t *testing.T) {
 func TestRetryDefaultsAndBackoff(t *testing.T) {
 	local := t.TempDir()
 	p := writeConfig(t, "local:\n  path: "+local+"\nremote:\n  protocol: sftp\n  host: h\n  path: /p\n")
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,17 +226,17 @@ func TestValidateRejectsImpossibleRetrySettings(t *testing.T) {
 		{"negative interval", Retry{MaxAttempts: 3, Interval: -1, Backoff: 2}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := validConfig(t.TempDir())
+			cfg := validJob(t.TempDir())
 			cfg.Retry = tc.retry
-			if err := Validate(cfg); err == nil {
-				t.Errorf("Validate() = nil, want %+v rejected", tc.retry)
+			if err := validate(cfg); err == nil {
+				t.Errorf("validate() = nil, want %+v rejected", tc.retry)
 			}
 		})
 	}
 }
 
 func TestWarningsFlagZeroStableDuration(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.StableDuration = 0
 	got := Warnings(cfg)
 	if len(got) == 0 || !strings.Contains(got[0].String(), "stable_duration") {
@@ -191,10 +244,12 @@ func TestWarningsFlagZeroStableDuration(t *testing.T) {
 	}
 }
 
-func validConfig(local string) *Config {
-	return &Config{
-		Name:  "job",
-		Local: Local{Path: local},
+func validJob(local string) *Job {
+	return &Job{
+		Name:      "job",
+		Direction: DirSend,
+		Enabled:   true,
+		Local:     Local{Path: local},
 		Remote: Remote{
 			Protocol:       ProtocolSFTP,
 			Host:           "example",
@@ -235,7 +290,7 @@ func TestRemoteDescribe(t *testing.T) {
 }
 
 func TestLogFieldsDefaultToTheStandardSet(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 
 	set := cfg.LogFields(slog.LevelInfo)
 	for _, want := range DefaultLogFields {
@@ -254,7 +309,7 @@ func TestLogFieldsDefaultToTheStandardSet(t *testing.T) {
 }
 
 func TestLogFieldsNamedExplicitlyAreExactlyWhatIsWritten(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Log.Fields = []string{FieldSrc, FieldResult}
 
 	// Naming fields replaces the defaults entirely, including at debug level.
@@ -270,7 +325,7 @@ func TestLogFieldsNamedExplicitlyAreExactlyWhatIsWritten(t *testing.T) {
 }
 
 func TestEmptyLogFieldsSelectsNothing(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Log.Fields = []string{}
 
 	// An empty list is a deliberate choice and differs from omitting the key.
@@ -280,10 +335,10 @@ func TestEmptyLogFieldsSelectsNothing(t *testing.T) {
 }
 
 func TestValidateRejectsUnknownLogFields(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Log.Fields = []string{FieldSrc, "checksum"}
 
-	err := Validate(cfg)
+	err := validate(cfg)
 	if err == nil {
 		t.Fatal("an unknown field name must be rejected rather than silently ignored")
 	}
@@ -292,9 +347,9 @@ func TestValidateRejectsUnknownLogFields(t *testing.T) {
 	}
 }
 
-func localConfig(t *testing.T) *Config {
+func localConfig(t *testing.T) *Job {
 	t.Helper()
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.Remote = Remote{Protocol: ProtocolLocal, Path: t.TempDir()}
 	return cfg
 }
@@ -302,8 +357,8 @@ func localConfig(t *testing.T) *Config {
 func TestValidateAcceptsALocalPairWithNoHost(t *testing.T) {
 	// A directory on this machine has nothing to connect to, so requiring a
 	// host would mean inventing one.
-	if err := Validate(localConfig(t)); err != nil {
-		t.Fatalf("Validate() = %v, want a local pair to be accepted", err)
+	if err := validate(localConfig(t)); err != nil {
+		t.Fatalf("validate() = %v, want a local pair to be accepted", err)
 	}
 }
 
@@ -324,9 +379,9 @@ func TestValidateRejectsNetworkSettingsOnALocalPair(t *testing.T) {
 			cfg := localConfig(t)
 			tc.set(&cfg.Remote)
 
-			err := Validate(cfg)
+			err := validate(cfg)
 			if err == nil || !strings.Contains(err.Error(), "remote."+tc.field) {
-				t.Fatalf("Validate() = %v, want remote.%s reported as unused", err, tc.field)
+				t.Fatalf("validate() = %v, want remote.%s reported as unused", err, tc.field)
 			}
 		})
 	}
@@ -350,10 +405,10 @@ func TestValidateRejectsOverlappingLocalDirectories(t *testing.T) {
 		{"the same directory twice", root, root},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := validConfig(tc.local)
+			cfg := validJob(tc.local)
 			cfg.Remote = Remote{Protocol: ProtocolLocal, Path: tc.remote}
 
-			if err := Validate(cfg); err == nil {
+			if err := validate(cfg); err == nil {
 				t.Fatal("want the two sides reported as overlapping")
 			}
 		})
@@ -368,8 +423,8 @@ func TestValidateRejectsALocalPathThatIsNotADirectory(t *testing.T) {
 	}
 	cfg.Remote.Path = file
 
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "not a directory") {
-		t.Fatalf("Validate() = %v, want the file reported", err)
+	if err := validate(cfg); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("validate() = %v, want the file reported", err)
 	}
 }
 
@@ -389,23 +444,23 @@ func TestRemoteDescribeRendersALocalPathAsItself(t *testing.T) {
 func TestValidateRejectsPruningWithoutAPostAction(t *testing.T) {
 	// With post_action: none the source files stay where they are, so no
 	// directory ever becomes empty and the setting would quietly do nothing.
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.RemoveEmptyDirs = true
 	cfg.PostAction = PostNone
 
-	err := Validate(cfg)
+	err := validate(cfg)
 	if err == nil || !strings.Contains(err.Error(), "remove_empty_dirs") {
-		t.Fatalf("Validate() = %v, want remove_empty_dirs reported", err)
+		t.Fatalf("validate() = %v, want remove_empty_dirs reported", err)
 	}
 
 	cfg.PostAction = PostDelete
-	if err := Validate(cfg); err != nil {
-		t.Errorf("Validate() = %v, want delete to be accepted", err)
+	if err := validate(cfg); err != nil {
+		t.Errorf("validate() = %v, want delete to be accepted", err)
 	}
 }
 
 func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
-	cfg := validConfig(t.TempDir())
+	cfg := validJob(t.TempDir())
 	cfg.RemoveEmptyDirs = true
 	cfg.PostAction = PostDelete
 	cfg.Recursive = false
@@ -430,17 +485,10 @@ func TestWarningsFlagPruningWithoutRecursion(t *testing.T) {
 	}
 }
 
-func TestLoadMakesLocalPathsAbsolute(t *testing.T) {
-	// Every log record names both ends in full, because a path relative to a
-	// working directory nobody remembers identifies nothing months later. The
-	// paths the records are built from therefore have to be absolute already.
-	work := t.TempDir()
-	t.Chdir(work)
-	for _, d := range []string{"out", "backup", "done"} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+func TestLoadResolvesRelativePathsAgainstTheFile(t *testing.T) {
+	// A service is started from a directory nobody chose — systemd starts it
+	// from / — so a relative path means what it says relative to the file it
+	// is written in, wherever goft was started from.
 	p := writeConfig(t, `
 local:
   path: out
@@ -452,18 +500,20 @@ move_to: done
 log:
   path: logs/goft.log
 `)
-	cfg, err := Load(p)
+	t.Chdir(t.TempDir())
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
+	dir := filepath.Dir(p)
 	for name, got := range map[string]string{
 		"local.path":  cfg.Local.Path,
 		"remote.path": cfg.Remote.Path,
 		"move_to":     cfg.MoveTo,
 		"log.path":    cfg.Log.Path,
 	} {
-		if !filepath.IsAbs(got) || !strings.HasPrefix(got, work) {
-			t.Errorf("%s = %q, want it resolved against %s", name, got, work)
+		if !filepath.IsAbs(got) || !strings.HasPrefix(got, dir) {
+			t.Errorf("%s = %q, want it resolved against %s", name, got, dir)
 		}
 	}
 }
@@ -479,7 +529,7 @@ remote:
   host: example
   path: upload/invoice
 `)
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,13 +546,18 @@ func TestTheExampleConfigurationLoads(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.Log.Fields != nil {
-		t.Errorf("log.fields = %v, want it left out so the full set applies", cfg.Log.Fields)
+	if len(cfg.Jobs) == 0 {
+		t.Fatal("the example has no job")
 	}
-
-	// Point the paths at directories that exist; everything else is as written.
-	cfg.Local.Path = t.TempDir()
-	cfg.MoveTo = t.TempDir()
+	for _, j := range cfg.Jobs {
+		if j.Log.Fields != nil {
+			t.Errorf("job %s: log.fields = %v, want it left out so the full set applies", j.Name, j.Log.Fields)
+		}
+		// Point the paths at directories that exist; everything else is as
+		// written.
+		j.Local.Path = t.TempDir()
+		j.MoveTo = t.TempDir()
+	}
 	if err := Validate(cfg); err != nil {
 		t.Errorf("Validate: %v", err)
 	}
@@ -517,7 +572,7 @@ remote:
   host: example
   path: /upload
 `)
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -526,16 +581,16 @@ remote:
 	}
 
 	cfg.Remote.IOTimeout = 0
-	if err := Validate(cfg); err != nil {
+	if err := validate(cfg); err != nil {
 		t.Errorf("io_timeout: 0 should turn the check off, got %v", err)
 	}
 	cfg.Remote.ConnectTimeout = 0
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "connect_timeout") {
-		t.Errorf("Validate() = %v, want connect_timeout: 0 refused", err)
+	if err := validate(cfg); err == nil || !strings.Contains(err.Error(), "connect_timeout") {
+		t.Errorf("validate() = %v, want connect_timeout: 0 refused", err)
 	}
 	cfg.Remote.ConnectTimeout, cfg.Remote.IOTimeout = time.Second, -time.Second
-	if err := Validate(cfg); err == nil || !strings.Contains(err.Error(), "io_timeout") {
-		t.Errorf("Validate() = %v, want a negative io_timeout refused", err)
+	if err := validate(cfg); err == nil || !strings.Contains(err.Error(), "io_timeout") {
+		t.Errorf("validate() = %v, want a negative io_timeout refused", err)
 	}
 }
 
@@ -548,7 +603,7 @@ remote:
   host: example
   path: /upload
 `)
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -567,7 +622,7 @@ remote:
   use_ssh_agent: false
   ssh_agent: /run/agent.sock
 `)
-	cfg, err = Load(p)
+	cfg, err = loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +641,7 @@ remote:
   host: example
   path: /upload
 `
-	cfg, err := Load(writeConfig(t, base))
+	cfg, err := loadJob(writeConfig(t, base))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -595,7 +650,7 @@ remote:
 	}
 
 	for _, value := range []bool{true, false} {
-		cfg, err := Load(writeConfig(t, base+"  case_insensitive: "+strconv.FormatBool(value)+"\n"))
+		cfg, err := loadJob(writeConfig(t, base+"  case_insensitive: "+strconv.FormatBool(value)+"\n"))
 		if err != nil {
 			t.Fatal(err)
 		}

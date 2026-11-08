@@ -7,9 +7,9 @@ Every block below is captured from a real run of the test in
 way, which was stopped by hand; only paths, the host, the port and the user name
 have been rewritten.
 
-Single runs (`send`, `recv`) print it by default. `serve` does not, since a
-watcher is usually left alone with its log. `--console` and `--no-console`
-override either way.
+A run of a job with `--run-once` prints it by default. The service does not,
+since a watcher is usually left alone with its log. `--console` and
+`--no-console` override either way.
 
 ## Language
 
@@ -39,11 +39,14 @@ The examples on this page are in English. The
 
 ## Before anything moves: `goft test`
 
-`goft test` validates the configuration, shows how each connection setting was
-resolved, connects, and checks both directions:
+`goft test` validates the configuration, then takes each job in turn — every
+enabled job, or the ones named on the command line — shows how each connection
+setting was resolved, connects, and checks the direction the job runs in:
 
 ```console
-config        /etc/goft/invoice-upload.yaml                      OK
+config        /etc/goft/goft.yaml                                OK
+
+job           invoice-upload                                     send
 local         /data/out/invoice                                  OK  readable and writable
 resolve       host = invoice-sftp                                (yaml)
 resolve       port = 22                                          (yaml)
@@ -52,7 +55,6 @@ resolve       password = REDACTED                                (yaml)
 resolve       private_key = /home/svc-transfer/.ssh/id_ed25519   (default)
 resolve       known_hosts = /home/svc-transfer/.ssh/known_hosts  (yaml)
 connect       sftp://invoice-sftp:22/upload/invoice              OK
-recv (list)   0 entries                                          OK
 send (write)  writable                                           OK
 ```
 
@@ -62,12 +64,20 @@ each names the value that will be used and where it came from — `yaml`,
 reported as set, never printed. `env` is the ssh-agent found through
 `SSH_AUTH_SOCK`; [Authenticating with ssh-agent](ssh-agent.md) covers that line.
 
-Both directions are checked and reported separately, because a read-only account
-that can only `recv` is a legitimate setup: the exit status is 2 only when
-neither direction works. A destination directory that does not exist yet is not
-an error either — it is reported as one that will be created on the first
-transfer, and the write is probed on its parent, so running `goft test` leaves
-nothing behind on the server.
+Each job is checked the way it uses each side: the side it takes files from has
+to be readable, the side it puts them on writable, and a side it deletes or
+moves files from writable as well. A `send` job is checked for `send (write)`,
+a `recv` job for `recv (list)` — and for `recv (delete)` too when it deletes
+what it receives. So a read-only account is a perfectly good setup for a `recv`
+job and not for a `send` job, and the local directory of a `send` job that
+leaves its files where they are may be read-only: it is reported as
+`readable; not writable, which this job does not need`. `goft test` exits 2,
+naming them, when any job it checked cannot be used as configured.
+
+A destination directory that does not exist yet is not an error — it is
+reported as one that will be created on the first transfer, and the write is
+probed on its parent, so running `goft test` leaves nothing behind on the
+server.
 
 ## What would be sent: `--dry-run`
 
@@ -98,7 +108,8 @@ goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (4
 ```
 
 The header names the job, the two ends and the size of the work; the arrow is
-`->` for `send` and `<-` for `recv`. Then one line per file, and a summary.
+`->` for a `send` job and `<-` for a `recv` job. Then one line per file, and a
+summary.
 
 The counter (`[2/4]`) is the position in the list, not the order of completion:
 with `workers: 2` the lines appear as each worker finishes. `archive.dat` was
@@ -117,7 +128,7 @@ goft invoice-upload  /data/out/invoice -> sftp://invoice-sftp/upload/invoice  (4
 
 Nothing was transferred, and each line says why. This is what a healthy
 `on_exists: skip` job looks like when there is nothing new to do — which is
-also why `serve` keeps quiet about such cycles rather than printing this every
+also why the service keeps quiet about such cycles rather than printing this every
 few seconds.
 
 ## Stopping part way
@@ -129,18 +140,22 @@ than a second into the first of three 64 MiB files:
 goft statement-upload  /data/out/statement -> sftp://invoice-sftp/upload/statement  (3 files, 192.0 MiB)
 [1/3] part-1.dat                                 64.0 MiB  ok          6.4s
 3 files: 1 transferred (64.0 MiB), 0 skipped, 0 failed, 2 not started  interrupted after 6.4s
-goft: interrupted before the run was complete
+goft: job "statement-upload": interrupted before the run was complete
 ```
 
 The file that was being sent arrived whole; the other two were left for the
 next run, and the exit status is 2 because this one did not finish.
 
-## `serve`
+## The service
 
-With `--console`, `serve` reports a cycle once it is over, and only when
+With `--console`, the service reports a cycle once it is over, and only when
 something actually happened: a cycle where every file was skipped prints
 nothing. A cycle that could not run at all — an unreachable server — is always
 reported, so silence means "nothing to do" and never "something is wrong".
+
+Each report is written in one piece, header to summary, so with several jobs
+running side by side the lines of one never land among another's; the header
+names the job.
 
 ## Colour, pipes and the two streams
 
@@ -151,8 +166,8 @@ When no `log.path` is configured and console output is on, the JSON log goes to
 stderr, so the two never mix:
 
 ```bash
-goft send 2>/dev/null    # just the readable output
-goft send >/dev/null     # just the JSON log
+goft --run-once invoice-upload 2>/dev/null    # just the readable output
+goft --run-once invoice-upload >/dev/null     # just the JSON log
 ```
 
 Both streams are UTF-8: the log because JSON is defined that way, the console

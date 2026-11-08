@@ -47,7 +47,7 @@ remote:
   ssh_agent: %s
 stable_duration: 0s
 `, localDir, server.Host, server.Port, server.User, server.KnownHosts, remoteDir, sock)
-	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(cfg, []byte(jobYAML(body)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(localDir, "a.txt"), []byte("through the agent"), 0o600); err != nil {
@@ -55,7 +55,7 @@ stable_duration: 0s
 	}
 
 	resetFlags()
-	rootCmd.SetArgs([]string{"send", "-c", cfg, "--no-console"})
+	rootCmd.SetArgs(runJobArgs(t, cfg, "send", "--no-console"))
 	rootCmd.SetOut(os.Stdout)
 	if code := Execute(); code != 0 {
 		t.Fatalf("send exit code = %d, want 0", code)

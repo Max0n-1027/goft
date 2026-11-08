@@ -1,7 +1,7 @@
 # ssh-agent で認証する
 
 sftp は `ssh` と同じように ssh-agent から鍵を受け取ります。`ssh-add` でエージェントに
-読み込んだ鍵は、パスフレーズをジョブファイルにも環境変数にも、goft から見える場所の
+読み込んだ鍵は、パスフレーズを設定ファイルにも環境変数にも、goft から見える場所の
 どこにも置かずにサインインに使えます。署名はエージェントが行い、秘密鍵がエージェントの
 外に出ることはありません。
 
@@ -20,7 +20,9 @@ remote:
 表示します。
 
 ```console
-設定          /etc/goft/invoice-upload.yaml                              OK
+設定          /etc/goft/goft.yaml                                        OK
+
+ジョブ        invoice-upload                                             send
 ローカル      /data/out/invoice                                          OK  読み書き可能
 解決          host = invoice-sftp                                        (yaml)
 解決          port = 22                                                  (yaml)
@@ -28,7 +30,6 @@ remote:
 解決          ssh_agent = /run/user/1000/ssh-agent.sock (鍵を 2 本保持)  (env)
 解決          known_hosts = /home/svc-transfer/.ssh/known_hosts          (yaml)
 接続          sftp://invoice-sftp:22/upload/invoice                      OK
-受信（一覧）  0 件                                                       OK
 送信（書込）  書き込み可能                                               OK
 ```
 

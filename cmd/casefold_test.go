@@ -14,8 +14,8 @@ func declareCaseInsensitive(t *testing.T, s *scenario, value string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(string(body), "  use_ssh_config: false",
-		"  use_ssh_config: false\n  case_insensitive: "+value, 1)
+	updated := strings.Replace(string(body), "      use_ssh_config: false",
+		"      use_ssh_config: false\n      case_insensitive: "+value, 1)
 	if err := os.WriteFile(s.cfgPath, []byte(updated), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestADeclaredCaseInsensitiveServerGetsNeitherOfTwoCaseTwins(t *testing.T) {
 	caseDistinctSource(t, s)
 	declareCaseInsensitive(t, s, "true")
 
-	if code := s.run("send", "--no-console"); code != 1 {
+	if code := s.send("--no-console"); code != 1 {
 		t.Errorf("exit code = %d, want 1 for the two files that were refused", code)
 	}
 	for _, name := range []string{"A.csv", "a.csv"} {
@@ -64,7 +64,7 @@ func TestAServerTakenToTellCaseApartGetsBothCaseTwins(t *testing.T) {
 	s := newScenario(t, "")
 	caseDistinctSource(t, s)
 
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want both files sent", code)
 	}
 	if s.readRemote("A.csv") != "upper\n" || s.readRemote("a.csv") != "lower\n" {
@@ -80,10 +80,22 @@ func TestDeclaringCaseInsensitiveFindsAnExistingFileUnderAnotherCase(t *testing.
 	s.writeLocal("INVOICE.csv", "new\n")
 	declareCaseInsensitive(t, s, "true")
 
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d", code)
 	}
-	if _, err := os.Stat(filepath.Join(s.remoteDir, "INVOICE.csv")); err == nil {
-		t.Error("the file was sent again under another case to a server declared to fold case")
+	// The names are read from the directory rather than looked up one by one:
+	// on a disk that folds case itself, as the test server's does on Windows,
+	// looking up INVOICE.csv finds invoice.csv.
+	entries, err := os.ReadDir(s.remoteDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() == "INVOICE.csv" {
+			t.Error("the file was sent again under another case to a server declared to fold case")
+		}
+	}
+	if got := s.readRemote("invoice.csv"); got != "already there\n" {
+		t.Errorf("the file already on the server was replaced: %q", got)
 	}
 }

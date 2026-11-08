@@ -24,8 +24,8 @@ func ExampleRetry_Wait() {
 
 // Naming fields in the configuration decides exactly what a transfer record
 // carries; the level only decides which records get written at all.
-func ExampleConfig_LogFields() {
-	var cfg config.Config
+func ExampleJob_LogFields() {
+	var cfg config.Job
 	cfg.Log.Fields = []string{config.FieldSrc, config.FieldResult, config.FieldHashDst}
 
 	set := cfg.LogFields(0)

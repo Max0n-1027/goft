@@ -1,44 +1,45 @@
 /*
-Package config loads and validates a goft job configuration.
+Package config loads and validates a goft configuration: the settings of the
+service itself, and the jobs it runs.
 
-One file describes exactly one job, and one job runs in one process. The
-transfer direction is not part of the file: it is chosen by the command, so the
-same settings can drive an upload or a download.
+One process runs every job in its configuration. Each job names the direction it
+moves files in, so the same file serves a watching service and a single run.
 
-	name: invoice-upload
-	local:
-	  path: /data/out/invoice
-	remote:
-	  protocol: sftp
-	  host: invoice-sftp
-	  path: /upload/invoice
-	include: ["*.csv"]
-	verify: hash
-	on_exists: skip
-	post_action: move
-	move_to: /data/done/invoice
+	service:
+	  log:
+	    path: /var/log/goft/goft.log
+	job_files:
+	  - jobs.d/*.yaml
+	jobs:
+	  - name: invoice-upload
+	    direction: send
+	    local:
+	      path: /data/out/invoice
+	    remote:
+	      protocol: sftp
+	      host: invoice-sftp
+	      path: /upload/invoice
+	    include: ["*.csv"]
+	    post_action: move
+	    move_to: /data/done/invoice
 
-[Load] reads a file, replaces ${NAME} in its values from the environment and
-fills in the defaults. [Validate] then reports everything wrong with it at once, and
-[ValidateForDirection] adds the checks that only make sense once the command is
-known. Credentials are deliberately not checked here, because the Windows
-Credential Manager, ~/.netrc or ~/.ssh/config may still supply them.
+[Load] reads the main file and every job file it names, replaces ${NAME} in their
+values from the environment, fills in the defaults and resolves relative paths
+against the file each was written in. [Validate] then reports everything wrong
+with the result at once: each job on its own, and the jobs against each other.
+Credentials are deliberately not checked here, because the Windows Credential
+Manager, ~/.netrc or ~/.ssh/config may still supply them.
 
 goft.example.yaml documents every setting in full.
 */
 package config
 
 import (
-	"bytes"
-	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/spf13/viper"
-
-	"goft/internal/i18n"
 )
 
 // Protocol identifies a remote transport.
@@ -281,16 +282,71 @@ type Log struct {
 	Compress bool `mapstructure:"compress"`
 }
 
-// Config is one job: which files, between where and where, and what happens to
-// them afterwards.
+// Config is everything one goft process runs: the settings of the service
+// itself, and its jobs.
+type Config struct {
+	// Service is what belongs to the process rather than to any one job.
+	Service Service
+	// Jobs are every job the configuration names, enabled or not, in the
+	// order they were read: the main file's first, then each job file's.
+	Jobs []*Job
+	// SourceFile is the main file, and JobFiles the job files it named that
+	// were read. Both are absolute.
+	SourceFile string
+	JobFiles   []string
+}
+
+// Service is what belongs to the process rather than to any one job.
+type Service struct {
+	// Log is where the service writes what happens to it — starting,
+	// stopping, a job that could not start — as opposed to what its jobs do,
+	// which each job's own log records.
+	Log Log `mapstructure:"log"`
+	// LockDir holds a lock for each running job, so that the same job is
+	// never run by two processes at once. It defaults to goft\locks under
+	// ProgramData on Windows, shared by every account, and elsewhere to a
+	// goft-<uid> directory of the account's own under the temporary directory.
+	LockDir string `mapstructure:"lock_dir"`
+}
+
+// Job looks a job up by name.
+func (c *Config) Job(name string) (*Job, bool) {
+	// Names that differ only in case are one name: Validate refuses a second
+	// job under it, and asking for it under either spelling finds the job.
+	for _, j := range c.Jobs {
+		if strings.EqualFold(j.Name, name) {
+			return j, true
+		}
+	}
+	return nil, false
+}
+
+// Enabled returns the jobs a service runs: those not switched off.
+func (c *Config) Enabled() []*Job {
+	var out []*Job
+	for _, j := range c.Jobs {
+		if j.Enabled {
+			out = append(out, j)
+		}
+	}
+	return out
+}
+
+// Job is one transfer: which files, between where and where, in which
+// direction, and what happens to them afterwards.
 //
 // The filtering and timing fields — Recursive through Workers — apply to
-// whichever side is sending, so the same settings describe an upload and a
-// download.
-type Config struct {
-	// Name identifies the job in every log record. It defaults to the
-	// configuration file name without its extension.
+// whichever side is sending.
+type Job struct {
+	// Name identifies the job in every log record, on the command line and in
+	// its lock. It is required and must be unique.
 	Name string `mapstructure:"name"`
+	// Direction is send, from the local side to the remote, or recv, the
+	// other way.
+	Direction Direction `mapstructure:"direction"`
+	// Enabled is false for a job the service leaves alone. It can still be
+	// run by name with --run-once. It defaults to true.
+	Enabled bool `mapstructure:"enabled"`
 	// Local is the source for send and the destination for recv.
 	Local Local `mapstructure:"local"`
 	// Remote is the other end, whichever direction is being run.
@@ -306,7 +362,7 @@ type Config struct {
 	Exclude []string `mapstructure:"exclude"`
 	// MaxFileSizeMB skips anything larger. Zero means no limit.
 	MaxFileSizeMB int64 `mapstructure:"max_file_size_mb"`
-	// PollInterval is the pause between cycles; it only affects serve.
+	// PollInterval is the pause between cycles; it only affects the service.
 	PollInterval time.Duration `mapstructure:"poll_interval"`
 	// StableDuration is how long a file's size and modification time must stay
 	// unchanged before it counts as finished being written.
@@ -336,13 +392,14 @@ type Config struct {
 	// transfer record carries.
 	Log Log `mapstructure:"log"`
 
-	// SourceFile is the path the configuration was read from. It is filled in
+	// SourceFile is the file the job was read from, absolute. It is filled in
 	// by [Load] rather than read from the file.
 	SourceFile string
 }
 
-// Defaults are applied to every key the configuration file does not set.
-func defaults(v *viper.Viper) {
+// jobDefaults are applied to every key a job does not set.
+func jobDefaults(v *viper.Viper) {
+	v.SetDefault("enabled", true)
 	v.SetDefault("recursive", false)
 	v.SetDefault("include", []string{"*"})
 	v.SetDefault("exclude", []string{"*.tmp", "*.part", ".*"})
@@ -359,59 +416,20 @@ func defaults(v *viper.Viper) {
 	v.SetDefault("retry.max_attempts", 3)
 	v.SetDefault("retry.interval", "2s")
 	v.SetDefault("retry.backoff", 2.0)
+	logDefaults(v)
+}
+
+// serviceDefaults are applied to every key the service section does not set.
+func serviceDefaults(v *viper.Viper) {
+	logDefaults(v)
+}
+
+// logDefaults fill in a log section, a job's or the service's.
+func logDefaults(v *viper.Viper) {
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.rotation", string(RotationSize))
 	v.SetDefault("log.max_size_mb", 100)
 	v.SetDefault("log.max_backups", 7)
 	v.SetDefault("log.max_age_days", 30)
 	v.SetDefault("log.compress", true)
-}
-
-// Load reads path, replaces ${NAME} in its values from the environment and
-// decodes the result. A variable that is not set is an error. Validation is
-// performed separately by [Validate].
-func Load(path string) (*Config, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return nil, i18n.Errorf("read config: %w", err)
-	}
-
-	v := viper.New()
-	v.SetConfigType("yaml")
-	defaults(v)
-	if err := v.ReadConfig(bytes.NewReader(raw)); err != nil {
-		return nil, i18n.Errorf("parse config %s: %w", path, err)
-	}
-	if err := expandEnv(v); err != nil {
-		return nil, i18n.Errorf("config %s: %w", path, err)
-	}
-
-	var c Config
-	if err := v.Unmarshal(&c); err != nil {
-		return nil, i18n.Errorf("decode config %s: %w", path, err)
-	}
-	// Stored absolute: the log has to identify the file long after whatever
-	// working directory the command was run from is forgotten.
-	if abs, err := filepath.Abs(path); err == nil {
-		c.SourceFile = abs
-	} else {
-		c.SourceFile = path
-	}
-
-	if c.Name == "" {
-		base := filepath.Base(path)
-		c.Name = strings.TrimSuffix(base, filepath.Ext(base))
-	}
-
-	// Paths on this machine are resolved once, here. Every transfer record
-	// names both ends in full, because a path relative to a working directory
-	// nobody remembers identifies nothing when the log is read months later,
-	// and those records are built from these values.
-	c.Local.Path = absPath(c.Local.Path)
-	c.MoveTo = absPath(c.MoveTo)
-	c.Log.Path = absPath(c.Log.Path)
-	if c.Remote.IsLocal() {
-		c.Remote.Path = absPath(c.Remote.Path)
-	}
-	return &c, nil
 }

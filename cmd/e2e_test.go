@@ -47,27 +47,30 @@ log:
 `, s.localDir, remote.Host, remote.Port, remote.User, string(remote.Password),
 		remote.KnownHosts, s.remoteDir, extra)
 
-	s.cfgPath = filepath.Join(t.TempDir(), "job.yaml")
-	if err := os.WriteFile(s.cfgPath, []byte(body), 0o600); err != nil {
+	s.cfgPath = filepath.Join(t.TempDir(), "goft.yaml")
+	if err := os.WriteFile(s.cfgPath, []byte(jobYAML(body)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-// run executes the command line the way a user would, and returns the exit code.
-func (s *scenario) run(args ...string) int {
+// send and recv run the scenario's job once in that direction, the way a
+// person would, and return the exit code.
+func (s *scenario) send(args ...string) int {
 	s.t.Helper()
-	resetFlags()
-	rootCmd.SetArgs(append(args, "-c", s.cfgPath))
-	rootCmd.SetOut(os.Stdout)
-	return Execute()
+	return runJob(s.t, s.cfgPath, "send", args...)
+}
+func (s *scenario) recv(args ...string) int {
+	s.t.Helper()
+	return runJob(s.t, s.cfgPath, "recv", args...)
 }
 
 // resetFlags clears the package level flag state between runs, which cobra
 // keeps across Execute calls.
 func resetFlags() {
-	flagConfig, flagLogLevel, flagLogFile, flagLang = "", "", "", ""
+	flagConfig, flagLogLevel, flagLang = "", "", ""
 	flagConsole, flagNoConsole, flagDryRun = false, false, false
+	flagRunOnce = nil
 
 	// Setting the variables back is not enough: pflag also records that a flag
 	// was given at all, and it is that record which MarkFlagsMutuallyExclusive
@@ -78,7 +81,7 @@ func resetFlags() {
 		cmds = append(cmds, cmds[i].Commands()...)
 	}
 	for _, c := range append(cmds, rootCmd) {
-		for _, name := range []string{"config", "log-level", "log-file", "console", "no-console", "dry-run", "lang"} {
+		for _, name := range []string{"config", "log-level", "console", "no-console", "dry-run", "lang", "run-once", "help"} {
 			if f := c.Flags().Lookup(name); f != nil {
 				f.Changed = false
 			}
@@ -86,7 +89,38 @@ func resetFlags() {
 				f.Changed = false
 			}
 		}
+		// --help is not one of ours, so nothing above set it back. Once given,
+		// it would turn every later run of the same command into help.
+		if f := c.Flags().Lookup("help"); f != nil {
+			_ = f.Value.Set("false")
+		}
 	}
+}
+
+// edit replaces old in the scenario's configuration with new, and fails the
+// test if old is not there to replace.
+func (s *scenario) edit(old, new string) {
+	s.t.Helper()
+	body, err := os.ReadFile(s.cfgPath)
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	if !strings.Contains(string(body), old) {
+		s.t.Fatalf("the configuration has no %q to replace:\n%s", old, body)
+	}
+	updated := strings.Replace(string(body), old, new, 1)
+	if err := os.WriteFile(s.cfgPath, []byte(updated), 0o600); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
+// logTo sends the scenario job's log to a file, whose path it returns, so
+// that the records can be inspected.
+func (s *scenario) logTo() string {
+	s.t.Helper()
+	p := filepath.Join(s.t.TempDir(), "job.log")
+	s.edit("    log:\n      level: info\n", "    log:\n      level: info\n      path: "+p+"\n")
+	return p
 }
 
 func (s *scenario) writeLocal(name, body string) {
@@ -139,7 +173,7 @@ func TestSendUploadsAndVerifies(t *testing.T) {
 	s := newScenario(t, "verify: hash\n")
 	s.writeLocal("invoice.csv", "id,amount\n1,100\n")
 
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := s.readRemote("invoice.csv"); got != "id,amount\n1,100\n" {
@@ -155,7 +189,7 @@ func TestSendMovesTheSourceAside(t *testing.T) {
 	s := newScenario(t, "post_action: move\nmove_to: "+archive+"\n")
 	s.writeLocal("a.csv", "x")
 
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if exists(t, filepath.Join(s.localDir, "a.csv")) {
@@ -170,7 +204,7 @@ func TestRecvDownloadsFromTheServer(t *testing.T) {
 	s := newScenario(t, "verify: hash\n")
 	s.writeRemote("report.csv", "downloaded\n")
 
-	if code := s.run("recv", "--no-console"); code != 0 {
+	if code := s.recv("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := s.readLocal("report.csv"); got != "downloaded\n" {
@@ -182,7 +216,7 @@ func TestRecvDeletesTheRemoteSource(t *testing.T) {
 	s := newScenario(t, "post_action: delete\n")
 	s.writeRemote("report.csv", "x")
 
-	if code := s.run("recv", "--no-console"); code != 0 {
+	if code := s.recv("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if exists(t, filepath.Join(s.remoteDir, "report.csv")) {
@@ -197,7 +231,7 @@ func TestRecvRejectsMoveAtStartup(t *testing.T) {
 
 	// move would have to create directories on the remote side, which is out of
 	// scope, so the combination is refused before anything is transferred.
-	if code := s.run("recv", "--no-console"); code != 2 {
+	if code := s.recv("--no-console"); code != 2 {
 		t.Errorf("exit code = %d, want 2 for a configuration that cannot run", code)
 	}
 	if exists(t, filepath.Join(s.localDir, "report.csv")) {
@@ -208,12 +242,12 @@ func TestRecvRejectsMoveAtStartup(t *testing.T) {
 func TestSecondSendSkipsWhatIsAlreadyThere(t *testing.T) {
 	s := newScenario(t, "on_exists: skip\n")
 	s.writeLocal("a.csv", "first")
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatal("first send failed")
 	}
 
 	s.writeLocal("a.csv", "second")
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatal("second send failed")
 	}
 	if got := s.readRemote("a.csv"); got != "first" {
@@ -224,10 +258,10 @@ func TestSecondSendSkipsWhatIsAlreadyThere(t *testing.T) {
 func TestOverwriteReplacesChangedFiles(t *testing.T) {
 	s := newScenario(t, "on_exists: overwrite\n")
 	s.writeLocal("a.csv", "first")
-	s.run("send", "--no-console")
+	s.send("--no-console")
 
 	s.writeLocal("a.csv", "second")
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatal("second send failed")
 	}
 	if got := s.readRemote("a.csv"); got != "second" {
@@ -239,7 +273,7 @@ func TestDryRunTransfersNothing(t *testing.T) {
 	s := newScenario(t, "")
 	s.writeLocal("a.csv", "x")
 
-	if code := s.run("send", "--dry-run"); code != 0 {
+	if code := s.send("--dry-run"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if exists(t, filepath.Join(s.remoteDir, "a.csv")) {
@@ -249,36 +283,53 @@ func TestDryRunTransfersNothing(t *testing.T) {
 
 func TestInvalidConfigurationExitsTwo(t *testing.T) {
 	s := newScenario(t, "verify: sha256\n")
-	if code := s.run("send", "--no-console"); code != 2 {
+	if code := s.send("--no-console"); code != 2 {
 		t.Errorf("exit code = %d, want 2 for an invalid configuration", code)
 	}
 }
 
 func TestMissingConfigurationExitsTwo(t *testing.T) {
 	resetFlags()
-	rootCmd.SetArgs([]string{"send", "-c", filepath.Join(t.TempDir(), "absent.yaml")})
+	rootCmd.SetArgs([]string{"--run-once", "job", "-c", filepath.Join(t.TempDir(), "absent.yaml")})
 	if code := Execute(); code != 2 {
 		t.Errorf("exit code = %d, want 2", code)
 	}
 }
 
-func TestTestCommandReportsBothDirections(t *testing.T) {
-	s := newScenario(t, "")
+// testOutput runs goft test against cfgPath, with args after it, and returns
+// what it printed and its exit code.
+func testOutput(t *testing.T, cfgPath string, args ...string) (string, int) {
+	t.Helper()
 	var out strings.Builder
 	resetFlags()
-	rootCmd.SetArgs([]string{"test", "-c", s.cfgPath})
+	rootCmd.SetArgs(append([]string{"test", "-c", cfgPath}, args...))
 	rootCmd.SetOut(&out)
 	code := Execute()
 	rootCmd.SetOut(os.Stdout)
+	return out.String(), code
+}
 
+func TestTestCommandChecksTheDirectionTheJobRuns(t *testing.T) {
+	s := newScenario(t, "")
+	out, code := testOutput(t, s.cfgPath)
 	if code != 0 {
-		t.Fatalf("exit code = %d, want 0", code)
+		t.Fatalf("exit code = %d, want 0\n%s", code, out)
 	}
-	for _, want := range []string{"config", "connect", "recv (list)", "send (write)"} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("output does not mention %q:\n%s", want, out.String())
+	for _, want := range []string{"config", "job", "e2e", "connect", "send (write)"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output does not mention %q:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "recv (list)") {
+		t.Errorf("a send job was checked for recv:\n%s", out)
+	}
+
+	setDirection(t, s.cfgPath, "recv")
+	out, code = testOutput(t, s.cfgPath)
+	if code != 0 || !strings.Contains(out, "recv (list)") || strings.Contains(out, "send (write)") {
+		t.Errorf("exit %d; want a recv job checked for listing only:\n%s", code, out)
+	}
+
 	// The probe directory must not survive the check.
 	entries, err := os.ReadDir(s.remoteDir)
 	if err != nil {
@@ -291,22 +342,35 @@ func TestTestCommandReportsBothDirections(t *testing.T) {
 	}
 }
 
-func TestConfiguredDirectionIsRecordedInTheLog(t *testing.T) {
-	logPath := filepath.Join(t.TempDir(), "job.log")
+func TestTestCommandChecksOnlyTheJobsNamed(t *testing.T) {
 	s := newScenario(t, "")
-	// Rewrite the log destination to a file so the records can be inspected.
-	body, err := os.ReadFile(s.cfgPath)
-	if err != nil {
+	if out, code := testOutput(t, s.cfgPath, "e2e"); code != 0 || !strings.Contains(out, "e2e") {
+		t.Errorf("exit %d, want the named job checked:\n%s", code, out)
+	}
+	if out, code := testOutput(t, s.cfgPath, "nope"); code != 2 {
+		t.Errorf("exit %d, want an unknown job refused:\n%s", code, out)
+	}
+}
+
+func TestTestCommandFailsAJobThatCannotBeUsed(t *testing.T) {
+	s := newScenario(t, "")
+	// recv from a directory the server does not have.
+	setDirection(t, s.cfgPath, "recv")
+	if err := os.RemoveAll(s.remoteDir); err != nil {
 		t.Fatal(err)
 	}
-	updated := strings.Replace(string(body), "log:\n  level: info",
-		"log:\n  level: info\n  path: "+logPath, 1)
-	if err := os.WriteFile(s.cfgPath, []byte(updated), 0o600); err != nil {
-		t.Fatal(err)
+	out, code := testOutput(t, s.cfgPath)
+	if code != 2 || !strings.Contains(out, "remote path does not exist yet") {
+		t.Errorf("exit %d, want 2 and the missing directory named:\n%s", code, out)
 	}
+}
+
+func TestConfiguredDirectionIsRecordedInTheLog(t *testing.T) {
+	s := newScenario(t, "")
+	logPath := s.logTo()
 	s.writeLocal("a.csv", "x")
 
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatal("send failed")
 	}
 	recorded, err := os.ReadFile(logPath)
@@ -331,20 +395,11 @@ func TestUnsupportedSSHConfigDirectiveIsWarnedAboutOnEveryRun(t *testing.T) {
 	if err := os.WriteFile(sshCfg, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := os.ReadFile(s.cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	updated := strings.Replace(string(cfg), "  use_ssh_config: false",
-		"  use_ssh_config: true\n  ssh_config_file: "+sshCfg, 1)
-	logPath := filepath.Join(t.TempDir(), "job.log")
-	updated = strings.Replace(updated, "log:\n  level: info", "log:\n  level: info\n  path: "+logPath, 1)
-	if err := os.WriteFile(s.cfgPath, []byte(updated), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	s.edit("      use_ssh_config: false", "      use_ssh_config: true\n      ssh_config_file: "+sshCfg)
+	logPath := s.logTo()
 	s.writeLocal("a.csv", "x")
 
-	s.run("send", "--no-console")
+	s.send("--no-console")
 
 	recorded, err := os.ReadFile(logPath)
 	if err != nil {
@@ -379,7 +434,7 @@ func TestTestCommandProbesTheLocalDirectory(t *testing.T) {
 	}
 }
 
-func TestTestCommandReportsAReadOnlyLocalDirectory(t *testing.T) {
+func TestTestCommandJudgesAReadOnlyLocalDirectoryByWhatTheJobNeeds(t *testing.T) {
 	requirePOSIX(t, "chmod cannot make a directory read-only on Windows, so the probe would still succeed")
 	if os.Getuid() == 0 {
 		t.Skip("root can write to a read-only directory")
@@ -390,20 +445,17 @@ func TestTestCommandReportsAReadOnlyLocalDirectory(t *testing.T) {
 	}
 	defer os.Chmod(s.localDir, 0o755)
 
-	var out strings.Builder
-	resetFlags()
-	rootCmd.SetArgs([]string{"test", "-c", s.cfgPath})
-	rootCmd.SetOut(&out)
-	code := Execute()
-	rootCmd.SetOut(os.Stdout)
-
-	// A send job is perfectly happy with a read-only source, so this is a
-	// remark rather than a failure.
-	if code != 0 {
-		t.Errorf("exit code = %d, want 0: a read-only local directory still works for send", code)
+	// A send job is perfectly happy with a read-only source.
+	out, code := testOutput(t, s.cfgPath)
+	if code != 0 || !strings.Contains(out, "which this job does not need") {
+		t.Errorf("exit %d, want a read-only source accepted for send:\n%s", code, out)
 	}
-	if !strings.Contains(out.String(), "recv would need") {
-		t.Errorf("output does not say which direction is affected:\n%s", out.String())
+
+	// A recv job has to write there.
+	setDirection(t, s.cfgPath, "recv")
+	out, code = testOutput(t, s.cfgPath)
+	if code != 2 || !strings.Contains(out, "which this job needs") {
+		t.Errorf("exit %d, want a read-only destination refused for recv:\n%s", code, out)
 	}
 }
 
@@ -411,7 +463,7 @@ func TestSendRemovesTheDirectoryItEmptied(t *testing.T) {
 	s := newScenario(t, "recursive: true\npost_action: delete\nremove_empty_dirs: true\n")
 	s.writeLocal("2026-08/invoice.csv", "id,amount\n1,100\n")
 
-	if code := s.run("send", "--no-console"); code != 0 {
+	if code := s.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := s.readRemote("2026-08/invoice.csv"); got != "id,amount\n1,100\n" {
@@ -431,7 +483,7 @@ func TestRecvRemovesTheRemoteDirectoryItEmptied(t *testing.T) {
 	s := newScenario(t, "recursive: true\npost_action: delete\nremove_empty_dirs: true\n")
 	s.writeRemote("2026-08/report.csv", "downloaded\n")
 
-	if code := s.run("recv", "--no-console"); code != 0 {
+	if code := s.recv("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := s.readLocal("2026-08/report.csv"); got != "downloaded\n" {
@@ -472,7 +524,7 @@ retry:
 log:
   path: %s
 `, localDir, proxy.Host, proxy.Port, server.User, string(server.Password), remoteDir, logFile)
-	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(cfg, []byte(jobYAML(body)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	payload := strings.Repeat("0123456789abcdef", 1<<18) // 4 MiB
@@ -483,7 +535,7 @@ log:
 	done := make(chan int, 1)
 	go func() {
 		resetFlags()
-		rootCmd.SetArgs([]string{"send", "-c", cfg, "--no-console"})
+		rootCmd.SetArgs(runJobArgs(t, cfg, "send", "--no-console"))
 		done <- Execute()
 	}()
 	select {
