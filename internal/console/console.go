@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 
 	"goft/internal/config"
@@ -57,8 +58,8 @@ type Options struct {
 	Remote string
 
 	// Buffered holds a cycle's output back until the cycle ends, and drops it
-	// if nothing was transferred and nothing needs attention. Set it for
-	// serve, not for one-shot runs.
+	// if nothing was transferred and nothing needs attention. Set it for a
+	// job the service runs, not for one-shot runs.
 	Buffered bool
 }
 
@@ -165,15 +166,19 @@ func (c *Console) CycleError(err error) {
 	defer c.mu.Unlock()
 
 	// Whatever the cycle had already reported — the header naming the files it
-	// found — is worth seeing alongside the reason it got no further.
+	// found — is worth seeing alongside the reason it got no further, so the
+	// two go out together.
+	c.pending = append(c.pending, fmt.Sprintf("goft %s  %s", c.job, c.p.Error(err)))
 	c.flush()
-	fmt.Fprintf(c.w, "goft %s  %s\n", c.job, c.p.Error(err))
 }
 
 // flush writes out anything the cycle has been holding back and starts afresh.
+//
+// It is written in one piece: with several jobs sharing stdout, a cycle's
+// lines would otherwise be interleaved with another job's.
 func (c *Console) flush() {
-	for _, line := range c.pending {
-		fmt.Fprintln(c.w, line)
+	if len(c.pending) > 0 {
+		io.WriteString(c.w, strings.Join(c.pending, "\n")+"\n")
 	}
 	c.pending, c.notable = nil, false
 }

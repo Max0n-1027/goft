@@ -2,11 +2,7 @@
 package logging
 
 import (
-	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
-	"time"
 
 	"goft/internal/config"
 )
@@ -50,14 +46,18 @@ const (
 	EventSummary    = "summary"
 )
 
-// Options configures the logger for one process.
+// EventService marks a record about the service itself rather than a job.
+const EventService = "service"
+
+// Options configures one logger: a job's, or the service's.
 type Options struct {
 	// Log is the configured destination, rotation and field selection.
 	Log config.Log
 	// Level is the threshold, already resolved from Log.Level and any override.
 	Level slog.Level
 	// Job and Direction are attached to every record, so that the output of
-	// several processes can be collected in one place and still be told apart.
+	// several jobs can be collected in one place and still be told apart. The
+	// service's own logger has neither.
 	Job       string
 	Direction config.Direction
 
@@ -65,43 +65,20 @@ type Options struct {
 	// configured, leaving stdout to the human readable output.
 	ConsoleEnabled bool
 
-	// Now is used for date based rotation; nil means time.Now.
-	Now func() time.Time
+	// Outputs supplies the writer, shared with every other logger writing to
+	// the same place.
+	Outputs *Outputs
 }
 
-// nopCloser lets New always return something closable.
-type nopCloser struct{}
-
-func (nopCloser) Close() error { return nil }
-
-// New builds the process logger and the closer for its backing file, if any.
-func New(opts Options) (*slog.Logger, io.Closer, error) {
-	var (
-		w      io.Writer
-		closer io.Closer = nopCloser{}
-	)
-
-	switch {
-	case opts.Log.Path != "":
-		if dir := filepath.Dir(opts.Log.Path); dir != "" {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return nil, nil, err
-			}
-		}
-		now := opts.Now
-		if now == nil {
-			now = time.Now
-		}
-		rw := newRotatingWriter(opts.Log, now)
-		w, closer = rw, rw
-	case opts.ConsoleEnabled:
-		// stdout belongs to the console output in this case.
-		w = os.Stderr
-	default:
-		w = os.Stdout
+// New builds a logger writing where opts.Log says.
+func New(opts Options) (*slog.Logger, error) {
+	w, err := opts.Outputs.For(opts.Log, opts.ConsoleEnabled)
+	if err != nil {
+		return nil, err
 	}
-
-	h := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: opts.Level})
-	l := slog.New(h).With(KeyJob, opts.Job, KeyDirection, string(opts.Direction))
-	return l, closer, nil
+	l := slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: opts.Level}))
+	if opts.Job != "" {
+		l = l.With(KeyJob, opts.Job, KeyDirection, string(opts.Direction))
+	}
+	return l, nil
 }

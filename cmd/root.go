@@ -2,32 +2,25 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
 
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 
 	"goft/internal/config"
-	"goft/internal/console"
-	"goft/internal/engine"
-	"goft/internal/fsys"
 	"goft/internal/i18n"
-	"goft/internal/logging"
 )
 
 var (
 	flagConfig    string
 	flagLogLevel  string
-	flagLogFile   string
 	flagConsole   bool
 	flagNoConsole bool
+	flagRunOnce   []string
+	flagDryRun    bool
 )
 
 // exitError carries the process exit code alongside the failure.
@@ -42,19 +35,35 @@ type exitError struct {
 func (e *exitError) Error() string { return e.err.Error() }
 func (e *exitError) Unwrap() error { return e.err }
 
-// startupError marks a failure that prevented the job from running.
+// startupError marks a failure that prevented a job, or the service, from
+// running.
 func startupError(err error) error { return &exitError{code: 2, err: err} }
 
-// transferError marks a run that completed with failed files.
-func transferError(n int) error {
-	return &exitError{code: 1, err: i18n.Errorf("%d file(s) failed", n)}
-}
-
 var rootCmd = &cobra.Command{
-	Use:           "goft",
-	Short:         i18n.N("Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory"),
+	Use:   "goft",
+	Short: i18n.N("Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory"),
+	Long: i18n.N("Transfer files between a local directory and an FTP, SFTP or SMB server, or another directory.\n\n" +
+		"Without a command, goft runs every enabled job in its configuration and keeps\n" +
+		"watching until it is stopped. --run-once runs the named jobs once instead."),
+	Args:          cobra.NoArgs,
 	SilenceUsage:  true,
 	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		once := len(flagRunOnce) > 0 || flagDryRun
+		if !once && underServiceManager() {
+			return runUnderServiceManager()
+		}
+		ctx, stop := signalContext(cmd.Context())
+		defer stop()
+		cfg, err := loadConfig()
+		if err != nil {
+			return startupError(err)
+		}
+		if once {
+			return runOnce(ctx, cfg, flagRunOnce, flagDryRun)
+		}
+		return runService(ctx, cfg, nil)
+	},
 }
 
 func init() {
@@ -69,13 +78,16 @@ func init() {
 	}
 
 	pf := rootCmd.PersistentFlags()
-	pf.StringVarP(&flagConfig, "config", "c", "", i18n.N("path to the job configuration file"))
-	pf.StringVar(&flagLogLevel, "log-level", "", i18n.N("override log.level (debug | info | warn | error)"))
-	pf.StringVar(&flagLogFile, "log-file", "", i18n.N("override log.path"))
+	pf.StringVarP(&flagConfig, "config", "c", "", i18n.N("path to the configuration file"))
+	pf.StringVar(&flagLogLevel, "log-level", "", i18n.N("override log.level of the service and every job (debug | info | warn | error)"))
 	pf.BoolVar(&flagConsole, "console", false, i18n.N("force human readable output on stdout"))
 	pf.BoolVar(&flagNoConsole, "no-console", false, i18n.N("suppress human readable output on stdout"))
 	pf.StringVar(&flagLang, "lang", "", i18n.N("language to write in, en or ja (default: from GOFT_LANG or the locale)"))
 	rootCmd.MarkFlagsMutuallyExclusive("console", "no-console")
+
+	f := rootCmd.Flags()
+	f.StringArrayVar(&flagRunOnce, "run-once", nil, i18n.N("run the named job once and exit; repeat it to run several, one after another"))
+	f.BoolVar(&flagDryRun, "dry-run", false, i18n.N("list what would be transferred without transferring anything; with no --run-once, for every enabled job"))
 
 	// Help is shown without running the command, so it settles the language
 	// itself; by the time it is called the flags, --lang among them, are read.
@@ -104,10 +116,12 @@ func Execute() int {
 	return 2
 }
 
-// findConfig locates the job configuration.
+// findConfig locates the configuration.
 //
 // The search deliberately goes through os.UserConfigDir rather than a
-// hard-coded path, so the same binary behaves sensibly on every platform.
+// hard-coded path, so the same binary behaves sensibly on every platform. A
+// service on Windows runs as an account whose own configuration directory
+// nobody looks in, so ProgramData is searched there too.
 func findConfig() (string, error) {
 	if flagConfig != "" {
 		return flagConfig, nil
@@ -116,7 +130,11 @@ func findConfig() (string, error) {
 	if dir, err := os.UserConfigDir(); err == nil {
 		candidates = append(candidates, filepath.Join(dir, "goft", "goft.yaml"))
 	}
-	if runtime.GOOS != "windows" {
+	if runtime.GOOS == "windows" {
+		if dir := os.Getenv("ProgramData"); dir != "" {
+			candidates = append(candidates, filepath.Join(dir, "goft", "goft.yaml"))
+		}
+	} else {
 		candidates = append(candidates, "/etc/goft/goft.yaml")
 	}
 	for _, c := range candidates {
@@ -127,17 +145,8 @@ func findConfig() (string, error) {
 	return "", i18n.Errorf("no configuration found; looked at %v (use --config)", candidates)
 }
 
-// job holds everything one command needs to run.
-type job struct {
-	cfg      *config.Config
-	log      *slog.Logger
-	closeLog io.Closer
-	console  *console.Console
-	engine   *engine.Engine
-}
-
-// loadConfig reads and validates the configuration for a direction.
-func loadConfig(dir config.Direction) (*config.Config, error) {
+// loadConfig reads and validates the configuration, every job in it.
+func loadConfig() (*config.Config, error) {
 	path, err := findConfig()
 	if err != nil {
 		return nil, err
@@ -146,32 +155,25 @@ func loadConfig(dir config.Direction) (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := config.Validate(cfg); err != nil {
-		return nil, i18n.Errorf("invalid configuration %s:\n%w", path, err)
-	}
-	if err := config.ValidateForDirection(cfg, dir); err != nil {
-		return nil, i18n.Errorf("invalid configuration %s: %w", path, err)
-	}
-	if flagLogFile != "" {
-		if abs, err := filepath.Abs(flagLogFile); err == nil {
-			cfg.Log.Path = abs
-		} else {
-			cfg.Log.Path = flagLogFile
-		}
-	}
 	if flagLogLevel != "" {
 		if _, err := config.ParseLevel(flagLogLevel); err != nil {
 			return nil, i18n.Errorf("--log-level: %w", err)
 		}
-		cfg.Log.Level = flagLogLevel
+		cfg.Service.Log.Level = flagLogLevel
+		for _, j := range cfg.Jobs {
+			j.Log.Level = flagLogLevel
+		}
+	}
+	if err := config.Validate(cfg); err != nil {
+		return nil, i18n.Errorf("invalid configuration %s:\n%w", cfg.SourceFile, err)
 	}
 	return cfg, nil
 }
 
 // consoleEnabled decides whether stdout carries a human readable account.
 //
-// One-shot runs are watched by a person, so they default to on; a daemon writes
-// to its log instead. A dry run exists to be read, so it is always on.
+// A single run is watched by a person, so it defaults to on; a service writes
+// to its logs instead. A dry run exists to be read, so it is always on.
 func consoleEnabled(single, dryRun bool) bool {
 	switch {
 	case dryRun:
@@ -183,167 +185,4 @@ func consoleEnabled(single, dryRun bool) bool {
 	default:
 		return single
 	}
-}
-
-// newJob assembles configuration, logger, console and engine.
-func newJob(dir config.Direction, single, dryRun bool) (*job, error) {
-	cfg, err := loadConfig(dir)
-	if err != nil {
-		return nil, err
-	}
-	level, err := config.ParseLevel(cfg.Log.Level)
-	if err != nil {
-		return nil, err
-	}
-	withConsole := consoleEnabled(single, dryRun)
-
-	log, closer, err := logging.New(logging.Options{
-		Log:            cfg.Log,
-		Level:          level,
-		Job:            cfg.Name,
-		Direction:      dir,
-		ConsoleEnabled: withConsole,
-	})
-	if err != nil {
-		return nil, err
-	}
-	j := &job{cfg: cfg, log: log, closeLog: closer}
-
-	// The settings open the log, so that a warning about them is read after
-	// them rather than before.
-	j.logConfiguration()
-	for _, w := range config.Warnings(cfg) {
-		log.Warn(w.String(), logging.KeyEvent, logging.EventLifecycle)
-	}
-	if err := reportResolution(log, cfg.Remote); err != nil {
-		j.close()
-		return nil, err
-	}
-
-	newLocal := func(context.Context) (fsys.FS, error) {
-		return fsys.NewLocal(cfg.Local.Path), nil
-	}
-	newRemote := func(ctx context.Context) (fsys.FS, error) {
-		return fsys.NewRemote(ctx, cfg.Remote)
-	}
-	newSrc, newDst := newLocal, newRemote
-	if dir == config.DirRecv {
-		newSrc, newDst = newRemote, newLocal
-	}
-
-	opts := engine.Options{
-		Config:    cfg,
-		Direction: dir,
-		NewSrc:    newSrc,
-		NewDst:    newDst,
-		Logger:    log,
-		DryRun:    dryRun,
-		Single:    single,
-	}
-	if withConsole {
-		j.console = console.New(console.Options{
-			Writer:    os.Stdout,
-			Printer:   tr,
-			Level:     level,
-			Color:     term.IsTerminal(int(os.Stdout.Fd())),
-			Job:       cfg.Name,
-			Direction: dir,
-			Local:     cfg.Local.Path,
-			Remote:    cfg.Remote.Describe(),
-			Buffered:  !single,
-		})
-		opts.OnPlan = j.console.Plan
-		opts.OnResult = j.console.Result
-		opts.OnSummary = j.console.Summary
-		opts.OnCycleError = j.console.CycleError
-	}
-	j.engine = engine.New(opts)
-	return j, nil
-}
-
-// reportResolution records how the connection settings were arrived at.
-//
-// Resolving here rather than waiting for the first connection means a bad
-// ssh_config fails at startup, and it puts the warnings — an ignored ProxyJump,
-// host key checking relaxed by the alias — into the log of every run instead of
-// only into `goft test`.
-func reportResolution(log *slog.Logger, remote config.Remote) error {
-	resolved, err := fsys.Resolve(remote)
-	if err != nil {
-		return err
-	}
-	// The log is in English whatever language the console speaks.
-	for _, w := range resolved.Warnings {
-		log.Warn(w.String(), logging.KeyEvent, logging.EventConnect)
-	}
-	for _, t := range resolved.Trace {
-		log.Debug("resolved connection setting",
-			logging.KeyEvent, logging.EventConnect,
-			"field", t.Field, "value", t.Display(i18n.English), "source", t.Source)
-	}
-	return nil
-}
-
-// logConfiguration records the settings the run is about to use.
-//
-// It is written once, at info level, so that a log kept for auditing answers
-// "what settings moved this file" on its own, months later, without the
-// configuration file having to still exist in that form.
-func (j *job) logConfiguration() {
-	j.log.Info("starting",
-		logging.KeyEvent, logging.EventLifecycle,
-		"config", j.cfg)
-}
-
-func (j *job) close() {
-	if j.closeLog != nil {
-		_ = j.closeLog.Close()
-	}
-}
-
-// runOnce performs a single cycle and maps the outcome onto an exit code.
-func runOnce(ctx context.Context, dir config.Direction, dryRun bool) error {
-	j, err := newJob(dir, true, dryRun)
-	if err != nil {
-		return startupError(err)
-	}
-	defer j.close()
-
-	summary, err := j.engine.RunOnce(ctx)
-	switch {
-	case err != nil && ctx.Err() != nil:
-		// Stopped on request. The files under way were finished; the cycle's
-		// own summary, if it got that far, says what was left.
-		j.log.Warn("interrupted", logging.KeyEvent, logging.EventLifecycle)
-		return startupError(i18n.Errorf("interrupted before the run was complete"))
-	case err != nil:
-		j.log.Error("run failed", logging.KeyEvent, logging.EventLifecycle, logging.KeyError, err.Error())
-		return startupError(err)
-	}
-	if summary.Failed > 0 {
-		return transferError(summary.Failed)
-	}
-	return nil
-}
-
-// runServe polls until the process is asked to stop.
-//
-// A dry run reports once and stops: there is nothing to watch for when nothing
-// is going to be transferred.
-func runServe(ctx context.Context, dir config.Direction, dryRun bool) error {
-	if dryRun {
-		return runOnce(ctx, dir, true)
-	}
-
-	j, err := newJob(dir, false, dryRun)
-	if err != nil {
-		return startupError(err)
-	}
-	defer j.close()
-
-	if err := j.engine.Serve(ctx); err != nil {
-		return startupError(err)
-	}
-	j.log.Info("stopped", logging.KeyEvent, logging.EventLifecycle)
-	return nil
 }

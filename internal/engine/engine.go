@@ -18,11 +18,10 @@ import (
 	"goft/internal/scan"
 )
 
-// Options wires an engine to a job, a direction and its outputs.
+// Options wires an engine to a job and its outputs.
 type Options struct {
-	// Config is the job, and Direction which way it runs.
-	Config    *config.Config
-	Direction config.Direction
+	// Job is what to transfer, including which way.
+	Job *config.Job
 
 	// NewSrc and NewDst open one connection each. A cycle calls them once per
 	// worker, and again to rebuild a worker's connection before a retry, so
@@ -42,15 +41,15 @@ type Options struct {
 	OnPlan    func(Plan)
 	OnResult  func(Result)
 	OnSummary func(Summary)
-	// OnCycleError reports a cycle that could not run at all, which serve
-	// otherwise only records in the log.
+	// OnCycleError reports a cycle that could not run at all, which the
+	// service otherwise only records in the log.
 	OnCycleError func(error)
 
 	// DryRun reports what would be transferred without touching the receiving
 	// side at all.
 	DryRun bool
 
-	// Single marks a one-shot run (send/recv). Without a previous cycle to
+	// Single marks a one-shot run (--run-once). Without a previous cycle to
 	// compare against, settling has to be established by observing twice.
 	Single bool
 
@@ -63,7 +62,7 @@ type Options struct {
 // it with [Engine.RunOnce] or [Engine.Serve].
 type Engine struct {
 	opts   Options
-	cfg    *config.Config
+	cfg    *config.Job
 	filter *scan.Filter
 	stab   *scan.Stabilizer
 	// base is the process logger; log is base with the current cycle's id
@@ -88,7 +87,7 @@ type Engine struct {
 }
 
 // New builds an engine. The stabilizer is kept across cycles, which is what
-// lets serve accumulate the settle duration over several polls.
+// lets a watching job accumulate the settle duration over several polls.
 func New(opts Options) *Engine {
 	now := opts.Now
 	if now == nil {
@@ -99,15 +98,15 @@ func New(opts Options) *Engine {
 		log = slog.Default()
 	}
 	// A bad level cannot reach here: the configuration is validated first.
-	level, _ := config.ParseLevel(opts.Config.Log.Level)
+	level, _ := config.ParseLevel(opts.Job.Log.Level)
 	return &Engine{
 		opts:     opts,
-		cfg:      opts.Config,
-		filter:   scan.NewFilter(opts.Config.Include, opts.Config.Exclude),
-		stab:     scan.NewStabilizer(opts.Config.StableDuration, now),
+		cfg:      opts.Job,
+		filter:   scan.NewFilter(opts.Job.Include, opts.Job.Exclude),
+		stab:     scan.NewStabilizer(opts.Job.StableDuration, now),
 		base:     log,
 		log:      log,
-		fields:   opts.Config.LogFields(level),
+		fields:   opts.Job.LogFields(level),
 		now:      now,
 		oversize: map[string]scan.File{},
 	}

@@ -2,18 +2,19 @@
 
 [日本語](README-ja.md)
 
-Watches a directory and moves files over FTP, SFTP or SMB — or between two
-directories on the same machine — verifying every file it transfers.
+Watches directories and moves files over FTP, SFTP or SMB — or between two
+directories on the same machine — verifying every file it transfers. One
+process runs every job in its configuration, as a service, until it is stopped.
 
 ```bash
-goft send -c invoice-upload.yaml        # local -> remote, once
-goft recv -c report-download.yaml       # remote -> local, once
-goft serve send -c invoice-upload.yaml  # local -> remote, continuously
-goft test -c invoice-upload.yaml        # check the configuration and connection
+goft -c goft.yaml                              # every enabled job, continuously
+goft -c goft.yaml --run-once invoice-upload    # one job, once
+goft -c goft.yaml jobs                         # list the jobs
+goft -c goft.yaml test                         # check the configuration and each connection
 ```
 
-Add `--dry-run` to `send`, `recv` or `serve` to list what would be transferred
-without touching the destination.
+Add `--dry-run` to list what would be transferred without touching the
+destination: for the jobs named by `--run-once`, or for every enabled job.
 
 ## What it does
 
@@ -34,35 +35,42 @@ and never taken for files to transfer.
 
 ## Configuration
 
-One file describes one job, and one job runs in one process. See
-[goft.example.yaml](goft.example.yaml) for the annotated version.
+One file describes the service and its jobs; more jobs can come from files it
+names with `job_files`. See [goft.example.yaml](goft.example.yaml) for the
+annotated version, and [Running several jobs as a service](docs/service.md) for
+how the pieces fit.
 
 ```yaml
-name: invoice-upload
-local:
-  path: /data/out/invoice
-remote:
-  protocol: sftp
-  host: invoice-sftp        # a ~/.ssh/config Host alias works here
-  path: /upload/invoice
-include: ["*.csv"]
-verify: hash
-on_exists: skip
-post_action: move
-move_to: /data/done/invoice
-log:
-  path: /var/log/goft/invoice-upload.log
-  level: info
-  rotation: daily
+service:
+  log:
+    path: /var/log/goft/goft.log
+jobs:
+  - name: invoice-upload
+    direction: send             # local -> remote; recv is remote -> local
+    local:
+      path: /data/out/invoice
+    remote:
+      protocol: sftp
+      host: invoice-sftp        # a ~/.ssh/config Host alias works here
+      path: /upload/invoice
+    include: ["*.csv"]
+    verify: hash
+    on_exists: skip
+    post_action: move
+    move_to: /data/done/invoice
+    log:
+      path: /var/log/goft/invoice-upload.log
+      level: info
+      rotation: daily
 ```
 
 `protocol: local` names a second directory on this machine instead of a server,
 and the job is otherwise unchanged — same scan, same verification, same log:
 
 ```yaml
-remote:
-  protocol: local
-  path: /backup/invoice
+    remote:
+      protocol: local
+      path: /backup/invoice
 ```
 
 The two directories must be separate; goft refuses a configuration where either
@@ -70,13 +78,14 @@ contains the other. See
 [Copying between two local directories](docs/local-copy.md).
 
 Paths on this machine may be relative. They are resolved against the directory
-goft is started from, once, when the configuration is read, and the log records
-them in full.
+of the file they are written in, once, when the configuration is read, and the
+log records them in full.
 
-The direction is chosen by the command, not by the file. That means the same
-file could be used for both `send` and `recv`; keep one file per purpose,
-especially with `post_action: delete`, or a pair of jobs will pass the same
-files back and forth.
+Every job is checked at startup, on its own and against the others, and one
+mistake stops goft starting at all. Between jobs goft refuses a name used twice,
+two jobs taking from one directory when either deletes or moves what it sends,
+and jobs passing files round in a loop. See
+[Running several jobs as a service](docs/service.md#the-configuration).
 
 ### Credentials
 
@@ -109,8 +118,8 @@ Nothing needs to be written in plain text:
   registered needs no netrc at all, and an sftp job authenticating by password
   needs neither a password in the file nor a `User` in ssh_config. Only the user
   name and the password come from the store; `private_key_passphrase` unlocks a
-  file rather than authenticating to a host, so it stays in the job file or in
-  `${VAR}`. `credential_target` reads an entry under some other name, and
+  file rather than authenticating to a host, so it stays in the configuration or
+  in `${VAR}`. `credential_target` reads an entry under some other name, and
   `use_credential_manager: false` skips the store.
 
   The credentials Windows keeps for network shares are a different kind, and
@@ -125,7 +134,7 @@ criterion makes the parser reject the whole file, and a default file it rejects
 is skipped with a warning — none of its settings apply, while the other default
 file still does; a file named by `ssh_config_file` is an error instead.
 `ProxyJump` and `ProxyCommand` are not supported, and are reported as warnings
-rather than applied silently. Put the settings you need directly in the job file
+rather than applied silently. Put the settings you need directly in the job
 instead.
 
 ssh-agent is found as `ssh` finds it: `ssh_agent` in the job, then
@@ -160,29 +169,39 @@ holds for that host, as OpenSSH does. A known_hosts with just the host's
 ed25519 key — what `ssh` often leaves behind — is therefore enough, even though
 the server also has keys of other kinds.
 
-### Running several jobs
+### Running as a service
 
-goft does not manage multiple jobs; run one process per configuration file. On
-Linux a systemd template unit does this neatly:
+`goft` with no command runs every enabled job side by side until it is stopped,
+each one watching its own directory. Every job holds a lock while it runs, so a
+`--run-once` of a job the service is running is refused rather than run twice.
+On Linux one systemd unit runs everything:
 
 ```ini
-# /etc/systemd/system/goft@.service
+# /etc/systemd/system/goft.service
 [Service]
-ExecStart=/usr/local/bin/goft serve send -c /etc/goft/%i.yaml
+ExecStart=/usr/local/bin/goft -c /etc/goft/goft.yaml
 Restart=always
+RestartSec=60
 ```
 
-```bash
-systemctl enable --now goft@invoice-upload
+On Windows goft is a native service, registered from an administrator's
+prompt; every log has to go to a file there, since a service has no console:
+
+```
+goft service install -c C:\ProgramData\goft\goft.yaml
+sc.exe start goft
 ```
 
-Every log record carries `job` and `direction`, so the output of several
-processes can be collected in one place and still be told apart.
+The service writes its own log — which configuration, which jobs, when it
+stopped — and each job writes to its log as before. Every record carries `job`
+and `direction`, so several jobs can share one file and still be told apart.
+[Running several jobs as a service](docs/service.md) covers the configuration,
+the locks, both platforms, and moving from one job per file.
 
 ## Behaviour worth knowing
 
-**Detection is not instant.** `serve` runs one cycle at a time and sleeps
-`poll_interval` between them, and a file is picked up by the first scan that
+**Detection is not instant.** A watching job runs one cycle at a time and
+sleeps `poll_interval` between them, and a file is picked up by the first scan that
 has seen it unchanged for `stable_duration`. Once a file stops changing it
 therefore waits for the next scan, and then for `stable_duration` rounded up to
 whole poll intervals — between 5 and 10 seconds with the defaults. Running
@@ -273,11 +292,12 @@ looks like a success. A trailing dot or space is the same story: Windows drops
 it, and the file arrives under a name that is not the one the server used. So
 are the reserved device names (`con`, `nul`, `aux`, `com1` and the rest), which
 ordinary Win32 path resolution cannot reach afterwards. Because none of this can
-be caught after the fact, writing onto a Windows disk — `recv`, or `send` with
-`protocol: local` — refuses such a name before writing anything, records the
-file as failed and says what about the name was the problem. It is not retried,
-since the name would be refused identically next time. The rest of the cycle
-carries on, and every name Windows can hold as written is transferred as before.
+be caught after the fact, writing onto a Windows disk — a `recv` job, or a
+`send` job with `protocol: local` — refuses such a name before writing
+anything, records the file as failed and says what about the name was the
+problem. It is not retried, since the name would be refused identically next
+time. The rest of the cycle carries on, and every name Windows can hold as
+written is transferred as before.
 
 **Names that differ only in case are not merged.** A Windows or macOS disk or
 an SMB share cannot hold `A.csv` and `a.csv` side by side, while a Linux source
@@ -301,13 +321,13 @@ merely idle between files. Without these, a server that accepted the connection
 and then hung held a watching job there for good, since cycles run one at a
 time.
 
-**Stopping finishes what is under way.** Ctrl+C or SIGTERM stops the run from
-starting anything new, while a file already being transferred is finished — a
+**Stopping finishes what is under way.** Ctrl+C or SIGTERM — or the Windows
+service manager — stops every job from starting anything new, while a file already being transferred is finished — a
 stop never leaves more than a `.goft.tmp` behind, and usually not even that.
 One that has stalled is dropped after `remote.io_timeout`, which bounds how
 long a stop can take. The cycle's summary is still written, as `cycle
-interrupted` with the number of files not started; `serve` then exits 0, and
-`send` or `recv` exit 2, since the run did not finish.
+interrupted` with the number of files not started; the service then exits 0,
+and `--run-once` exits 2, since the run did not finish.
 
 **A watching job that keeps failing goes quiet rather than loud.** When a whole
 cycle cannot run — an unreachable server, say — the pause before the next one
@@ -379,6 +399,12 @@ identify the job's account with but not act as — which a pipe server can
 otherwise do, and the agent's pipe name is there for the taking on a machine
 where the service is not running.
 
+The Windows service is tested without the service manager: the tests drive
+goft's handler the way the manager does — start, interrogate, stop — and check
+the states it reports, and the exit code of a start that fails. Registering a
+service needs an administrator, so `goft service install` and `uninstall` are
+left to a manual check.
+
 One test is opt-in, because it writes to the credential store of whoever runs
 it. It registers an entry under a host no job would use and removes it again:
 
@@ -390,22 +416,22 @@ GOFT_WINCRED_TEST=1 go test -count=1 ./internal/fsys/ -run Credential -v
 
 | Code | Meaning |
 |---|---|
-| 0 | Finished normally, including `serve` stopping on a signal |
+| 0 | Finished normally, including the service stopping on a signal |
 | 1 | The run completed but at least one file failed |
-| 2 | The run could not be completed: bad configuration, the connection failed, or it was stopped before it finished |
+| 2 | The run could not be completed: bad configuration, the connection failed, the job was locked by another goft, or it was stopped before it finished |
 
-`goft test` is the exception to the last row: it reports both directions and
-only fails when neither of them works, because a read-only account is a perfectly
-good setup for `recv`.
+With several `--run-once`, the worst of them decides. `goft test` exits 2 when a
+job cannot be used as configured: it checks each job in the direction it runs,
+so a read-only account is fine for a `recv` job and fails a `send` job.
 
 ## Output
 
 The JSON Lines log is the record; the human readable output on stdout is for
-whoever is watching. Single runs print it by default, `serve` does not, and
-`--console` / `--no-console` override either way.
+whoever is watching. `--run-once` prints it by default, the service does not,
+and `--console` / `--no-console` override either way.
 
-`serve` reports a cycle once it is over, and stays silent about cycles where
-nothing moved, so a working watcher with nothing to do prints nothing at all.
+The service reports a cycle once it is over, each job's report in one piece,
+and stays silent about cycles where nothing moved, so a working watcher with nothing to do prints nothing at all.
 A cycle that could not run — an unreachable server, say — is always reported.
 
 ### Language
@@ -418,8 +444,8 @@ anything else is English. A value other than `en` or `ja` in `--lang` or
 `GOFT_LANG` is an error.
 
 ```bash
-goft --lang ja test          # 日本語で
-LANG=C goft send             # in English, whatever the session uses
+goft --lang ja test                     # 日本語で
+LANG=C goft --run-once invoice-upload   # in English, whatever the session uses
 ```
 
 The log is in English whatever the language, so that the same event is always
@@ -438,8 +464,8 @@ When no log file is configured and the console output is on, the JSON log goes
 to stderr so the two never mix:
 
 ```bash
-goft send 2>/dev/null    # just the readable output
-goft send >/dev/null     # just the JSON log
+goft --run-once invoice-upload 2>/dev/null    # just the readable output
+goft --run-once invoice-upload >/dev/null     # just the JSON log
 ```
 
 With `verify: hash`, the default, every transfer records `hash_src` and
@@ -454,7 +480,8 @@ Each run opens with the settings it is about to use, defaults included, so a
 log kept for auditing answers "what moved this file, and how" on its own:
 
 ```json
-{"msg":"starting","event":"lifecycle","config":{"file":"/etc/goft/invoice.yaml",
+{"msg":"starting","job":"invoice-upload","direction":"send","event":"lifecycle",
+ "config":{"file":"/etc/goft/goft.yaml","name":"invoice-upload",
  "local":{"path":"/data/out/invoice"},
  "remote":{"protocol":"sftp","host":"invoice-sftp","path":"/upload/invoice",
            "user":"uploader","password":"REDACTED"},
@@ -500,6 +527,7 @@ what the same run looks like at debug level.
 The pages under [docs/](docs/README.md) walk through the behaviour with output
 from real runs:
 
+- [Running several jobs as a service](docs/service.md) — the configuration, `--run-once`, locks, systemd and the Windows service, moving from one job per file
 - [What gets transferred](docs/file-selection.md) — names, settling, the size cap
 - [Copying between two local directories](docs/local-copy.md) — `protocol: local`
 - [Authenticating with ssh-agent](docs/ssh-agent.md) — where the agent is found, which keys are offered, running as a service

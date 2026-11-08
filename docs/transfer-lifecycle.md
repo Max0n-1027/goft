@@ -1,17 +1,18 @@
 # The life of one file
 
 Once a file has been chosen — see [What gets transferred](file-selection.md) —
-this is what happens to it. The engine does not know which end is local: `send`
-gives it the local side as the source and the remote as the destination, `recv`
-the other way round, and everything below is the same in both directions.
+this is what happens to it. The engine does not know which end is local: a
+`send` job gives it the local side as the source and the remote as the
+destination, a `recv` job the other way round, and everything below is the same
+in both directions.
 
 ## 1. The destination directory
 
 The parent directory is created if the cycle's listing showed it missing, once
 per directory rather than once per file. That includes the destination itself:
-for `send`, `remote.path` need not exist before the first transfer, and whatever
+for a `send` job, `remote.path` need not exist before the first transfer, and whatever
 levels of it are missing are created, on every protocol. (`local.path` is
-checked at startup and has to exist, for `recv` as well.)
+checked at startup and has to exist, for a `recv` job as well.)
 A directory is created in one request when its parent exists, and the missing
 parents are only worked out when it does not.
 
@@ -247,14 +248,14 @@ never cut off however long it takes. Opening a connection has its own limit,
 well as the TCP connection, and for sftp the questions put to ssh-agent.
 
 One file failing does not stop the cycle. The others carry on, the summary
-counts the failures, and `send`/`recv` exit 1 — as opposed to exit 2, which
+counts the failures, and `--run-once` exits 1 — as opposed to exit 2, which
 means the run could not start, or was stopped before it finished.
 
-When a whole cycle fails under `serve` — an unreachable server, say — the pause
-before the next one doubles, up to five minutes, and returns to `poll_interval`
-as soon as a cycle succeeds. A job polling every second against a server that
-has gone for good would otherwise write tens of thousands of identical errors a
-day.
+When a whole cycle fails under the service — an unreachable server, say — the
+pause before the next one doubles, up to five minutes, and returns to
+`poll_interval` as soon as a cycle succeeds. A job polling every second against
+a server that has gone for good would otherwise write tens of thousands of
+identical errors a day.
 
 ## Watching it happen
 

@@ -1,214 +1,246 @@
-# goft job configuration.
+# goft configuration.
 #
-# One file describes one job, and one job runs in one process. The transfer
-# direction is not written here: `goft send` uploads, `goft recv` downloads.
-# To run several jobs, give each its own file and its own process.
+# One process runs every enabled job below, watching each until it is stopped:
+#
+#   goft -c /etc/goft/goft.yaml                       run as a service
+#   goft -c /etc/goft/goft.yaml --run-once invoice-upload    one job, once
+#   goft -c /etc/goft/goft.yaml jobs                  list the jobs
 #
 # ${NAME} in any value is replaced from the environment, and a variable that is
-# not set stops the job at startup. A `$` on its own is an ordinary character.
-
-# Shown in every log record. Defaults to the file name without its extension.
-name: invoice-upload
-
-# The local side of the transfer. It is the source for send and the
-# destination for recv. A relative path on this machine — here, in move_to,
-# log.path, or remote.path with protocol local — is resolved against the
-# directory goft is started from, and recorded in the log in full.
-local:
-  path: /data/out/invoice
-
-# The remote side.
-remote:
-  protocol: sftp              # ftp | sftp | smb | local
-  host: invoice-sftp          # for sftp this may be a ~/.ssh/config Host alias
-  path: /upload/invoice
-
-  # protocol: local names a second directory on this machine rather than a
-  # server. Nothing else about the job changes. The two directories must be
-  # separate: one inside the other would transfer the copies as well.
-  #   protocol: local
-  #   path: /backup/invoice
-  # host, port, user, password and share are rejected there, since none of them
-  # mean anything for a directory on this disk.
-
-  # Anything left out below is filled in from the Windows Credential Manager,
-  # then ~/.ssh/config (sftp) or ~/.netrc (ftp). What is written here always
-  # wins.
-  # port: 22
-  # user: uploader
-  # private_key: ~/.ssh/id_ed25519            # the only key offered; failing to unlock it is an error
-  # private_key_passphrase: ${GOFT_SSH_PASSPHRASE}   # not needed when ssh-agent holds the key
-  # Keys found without being named here (ssh_config's IdentityFile, or
-  # ~/.ssh/id_ed25519 and id_rsa) are skipped with a warning when they need a
-  # passphrase that is not given and ssh-agent does not hold them, so they
-  # never block password authentication.
-  # password: ${GOFT_SFTP_PASSWORD}
-  # known_hosts: ~/.ssh/known_hosts
-  # insecure_skip_host_key_check: false
-  # ssh_config's StrictHostKeyChecking is honoured: "no" turns verification off,
-  # and "accept-new" records the key of a host known_hosts does not list yet
-  # while still refusing a known host whose key has changed.
-
-  # use_ssh_config: true                    # sftp: false stops ~/.ssh/config being read
-  # ssh_config_file: /etc/goft/ssh_config   # sftp: use this file instead of the usual search
-  # sftp also takes keys from ssh-agent, found as ssh finds it: ssh_agent
-  # below, then IdentityAgent in ssh_config, then SSH_AUTH_SOCK, then on Windows
-  # the OpenSSH Authentication Agent service. Naming private_key, or
-  # IdentitiesOnly yes in ssh_config, keeps the agent's other keys back.
-  # use_ssh_agent: true                     # sftp: false stops the agent being asked
-  # ssh_agent: /run/user/1000/ssh-agent.sock  # sftp: ask this agent; on Windows it may be a pipe
-  # use_netrc: true                         # ftp: false stops the netrc lookup
-  # netrc_file: /etc/goft/netrc             # ftp: use this file instead of the usual search
-  # ftp reads ~/.netrc, or %USERPROFILE%\.netrc on Windows.
-
-  # On Windows, `user` and `password` for any protocol can come from a generic
-  # credential registered for goft, which keeps them out of this file without
-  # an environment variable. It is read before ~/.netrc and ~/.ssh/config:
-  #   cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
-  #   cmdkey /generic:goft:sftp://invoice-sftp /user:uploader /pass:secret
-  # private_key_passphrase is not read from the store; it unlocks a file rather
-  # than authenticating to a host.
-  # use_credential_manager: true            # false stops the store being read
-  # credential_target: LegacyEntry          # read this entry instead of goft:<protocol>://<host>
-
-  # share: shared                           # smb only; do not repeat it in `path`
-  # domain: WORKGROUP                       # smb only
-
-  # Whether this side treats A.csv and a.csv as one name. Left out, goft
-  # decides: a directory on Windows or macOS and an SMB share do, an sftp or ftp
-  # server is taken not to, since neither protocol can be asked. Set it for a
-  # server that does, such as OpenSSH on Windows, so that two files differing
-  # only in case are not sent onto one name, and an existing file under another
-  # case is recognised.
-  # case_insensitive: true
-
-  # How long opening a connection may take, all of it: for sftp asking
-  # ssh-agent for its keys, then the TCP connection, the handshake, the login
-  # and, for smb, mounting the share. A server that accepts the connection and
-  # then says nothing is given up on after this, and the attempt counts as a
-  # failure like any other.
-  # connect_timeout: 30s
-  #
-  # How long an open connection may go without moving any data while something
-  # is waiting on it. Past that it is dropped and the file tried again over a
-  # new one, as for any other dropped connection. It measures silence, not
-  # duration: a large file that keeps moving is never cut off, however long it
-  # takes. 0 turns it off.
-  # io_timeout: 5m
-
-# --- Which files take part. Applied to the sending side. ---
-
-recursive: false              # true also descends into subdirectories
-include: ["*.csv"]            # a file must match one of these
-exclude: ["*.tmp", "*.part", ".*"]  # ...and none of these; also prunes directories
-max_file_size_mb: 500         # 0 or omitted means no limit; larger files are skipped
-
-# How long a file's size and timestamp must stay unchanged before it is
-# considered finished being written. With serve, a file is picked up by the
-# first scan that has seen it unchanged this long, so once it stops changing it
-# waits for the next scan and then for this, rounded up to whole poll
-# intervals: 5 to 10 seconds with the values below.
-stable_duration: 3s
-poll_interval: 5s             # serve only: pause between cycles
-workers: 4                    # files transferred in parallel; also the connection count
-
-# --- What happens to each file. ---
-
-# hash   compare xxHash after reading the file back from the destination
-# length compare sizes only
-# none   accept anything that did not error
-verify: hash
-
-# skip      leave an existing destination file alone
-# overwrite replace it, unless `verify` shows the two are already identical
-on_exists: skip
-
-# none   leave the source file where it is
-# delete remove it
-# move   relocate it under move_to, keeping its relative path (send only)
-post_action: move
-move_to: /data/done/invoice   # required for move; must not be inside local.path
-
-# Remove a subdirectory of the sending side once the transfer has taken the
-# last file out of it, and its parent too if that leaves it empty. The sending
-# root itself is never removed, and neither is a directory goft did not empty:
-# one that was already empty, or that something wrote to in the meantime, is
-# left alone. Needs post_action delete or move, since with none the source
-# files stay where they are.
-remove_empty_dirs: false
-
-# --- Retrying a failed file. ---
-
-# A file that fails is attempted again within the same cycle, but only when the
-# error could plausibly go differently next time: a dropped connection or a
-# failed verification is retried, while a missing file, a permission error or a
-# 5xx reply from the server is not. The connection is rebuilt before each retry,
-# because retrying over a connection that has just died would fail identically.
-retry:
-  max_attempts: 3           # counts the first try; 1 disables retrying
-  interval: 2s              # wait before the first retry
-  backoff: 2.0              # multiply the wait each time; 1.0 keeps it constant
-
-# --- Logging. ---
-
-log:
-  path: /var/log/goft/invoice-upload.log   # empty writes to stdout, or stderr when the console is on
-  level: info                 # debug | info | warn | error
-  rotation: daily             # size | daily | monthly
-
-  # Which parameters each transferred file is recorded with. Leave the key out
-  # for all of those below but rate_mibs, which joins them at debug level; that
-  # is what most jobs want. Name fields to write exactly those and nothing
-  # else, at debug level as at any other.
-  #
-  #   src          where the file was read from, in full
-  #   dst          where the file was written, in full
-  #   protocol     ftp | sftp | smb | local
-  #   bytes        bytes transferred
-  #   duration_ms  how long the file took
-  #   verify       the verification method used
-  #   result       success | skipped | failed
-  #   reason       why it was skipped
-  #   error        why it failed
-  #   hash_src     xxHash of what was sent
-  #   hash_dst     xxHash read back from the destination
-  #   attempt      how many tries it took, when more than one
-  #   rate_mibs    transfer rate, on transferred files only; in the default
-  #                set at debug level
-  #
-  # time, level, msg, job, direction, event and cycle_id are always written: a
-  # record missing those cannot be placed. cycle_id is a fresh UUID for each
-  # pass over the sending side, so the records one pass produced can be picked
-  # out of a log a watching process has been appending to for days.
-  # fields: [src, dst, result, error, hash_src, hash_dst]
-  max_size_mb: 100
-  # Old generations beyond these limits are deleted. Only this job's own files
-  # are ever touched — invoice-2026-08-30.log, and lumberjack's backups of it —
-  # so several jobs can log into one directory, even when one job's name is the
-  # start of another's.
-  max_backups: 7
-  max_age_days: 30
-  compress: true
-
-# `level` is the only verbosity control, and the console output follows it too:
+# not set stops goft at startup. A `$` on its own is an ordinary character.
 #
-#   error  a file that failed; a cycle or a run that could not start, such as
-#            an unreachable server
-#   warn   + settings worth a second look (stable_duration 0, host key
-#            checking relaxed or accept-new, remove_empty_dirs without
-#            recursive), an ssh_config that could not be read or a directive in
-#            it that is ignored, a netrc others can read, an ssh-agent that
-#            could not be reached, a key skipped because it is locked, a file
-#            over the size cap the first time it is seen, a retry of a transfer
-#            or of a post-transfer action, a temporary file or an emptied
-#            directory that could not be removed, a cycle stopped part way by
-#            Ctrl+C or SIGTERM
-#   info   + the settings at startup and a record at shutdown, one record per
-#            file including the source and destination hashes, each emptied
-#            directory removed, a summary per cycle
-#   debug  + the timing of each step, how each connection parameter was
-#            resolved, what each scan found, a file over the size cap seen
-#            again, transfer rates
-#
-# A configuration that cannot be loaded never reaches the log: goft reports it
-# on stderr and exits with status 2.
+# A relative path on this machine is resolved against the directory of the file
+# it is written in, and recorded in the log in full.
+
+# What belongs to the process rather than to any one job.
+service:
+  # Where the service records what happens to it: starting, stopping, a job
+  # that could not start. Each job writes what it does to its own log, below.
+  # The same settings as a job's log; left out, it goes to stdout, or to
+  # stderr when the human readable console has stdout. Running as a Windows
+  # service, where stdout goes nowhere, a path is required.
+  log:
+    path: /var/log/goft/goft.log
+    level: info
+  # Each running job holds a lock here, so that the same job is never run by
+  # two processes at once. Defaults to C:\ProgramData\goft\locks on Windows,
+  # and elsewhere to /tmp/goft-<uid>, private to the account goft runs as. Set
+  # it when the service and a person running --run-once by hand would not see
+  # the same one: a different account, or systemd's PrivateTmp.
+  # lock_dir: /var/lib/goft/locks
+
+# More jobs, from other files: each holds a jobs: list like the one below and
+# nothing else. A pattern may match nothing; a name written out must exist.
+# job_files:
+#   - jobs.d/*.yaml
+
+# The jobs. Every job is checked at startup, alone and against the others, and
+# one that is wrong stops goft starting at all.
+jobs:
+  # Unique; shown in every log record, and how --run-once and goft jobs name it.
+  - name: invoice-upload
+    # send moves files from local to remote, recv from remote to local.
+    direction: send
+    # false leaves the job out of the service; --run-once can still run it.
+    # enabled: true
+
+    # The local side of the transfer. It is the source for send and the
+    # destination for recv.
+    local:
+      path: /data/out/invoice
+
+    # The remote side.
+    remote:
+      protocol: sftp              # ftp | sftp | smb | local
+      host: invoice-sftp          # for sftp this may be a ~/.ssh/config Host alias
+      path: /upload/invoice
+
+      # protocol: local names a second directory on this machine rather than a
+      # server. Nothing else about the job changes. The two directories must be
+      # separate: one inside the other would transfer the copies as well.
+      #   protocol: local
+      #   path: /backup/invoice
+      # host, port, user, password and share are rejected there, since none of them
+      # mean anything for a directory on this disk.
+
+      # Anything left out below is filled in from the Windows Credential Manager,
+      # then ~/.ssh/config (sftp) or ~/.netrc (ftp). What is written here always
+      # wins.
+      # port: 22
+      # user: uploader
+      # private_key: ~/.ssh/id_ed25519            # the only key offered; failing to unlock it is an error
+      # private_key_passphrase: ${GOFT_SSH_PASSPHRASE}   # not needed when ssh-agent holds the key
+      # Keys found without being named here (ssh_config's IdentityFile, or
+      # ~/.ssh/id_ed25519 and id_rsa) are skipped with a warning when they need a
+      # passphrase that is not given and ssh-agent does not hold them, so they
+      # never block password authentication.
+      # password: ${GOFT_SFTP_PASSWORD}
+      # known_hosts: ~/.ssh/known_hosts
+      # insecure_skip_host_key_check: false
+      # ssh_config's StrictHostKeyChecking is honoured: "no" turns verification off,
+      # and "accept-new" records the key of a host known_hosts does not list yet
+      # while still refusing a known host whose key has changed.
+
+      # use_ssh_config: true                    # sftp: false stops ~/.ssh/config being read
+      # ssh_config_file: /etc/goft/ssh_config   # sftp: use this file instead of the usual search
+      # sftp also takes keys from ssh-agent, found as ssh finds it: ssh_agent
+      # below, then IdentityAgent in ssh_config, then SSH_AUTH_SOCK, then on Windows
+      # the OpenSSH Authentication Agent service. Naming private_key, or
+      # IdentitiesOnly yes in ssh_config, keeps the agent's other keys back.
+      # use_ssh_agent: true                     # sftp: false stops the agent being asked
+      # ssh_agent: /run/user/1000/ssh-agent.sock  # sftp: ask this agent; on Windows it may be a pipe
+      # use_netrc: true                         # ftp: false stops the netrc lookup
+      # netrc_file: /etc/goft/netrc             # ftp: use this file instead of the usual search
+      # ftp reads ~/.netrc, or %USERPROFILE%\.netrc on Windows.
+
+      # On Windows, `user` and `password` for any protocol can come from a generic
+      # credential registered for goft, which keeps them out of this file without
+      # an environment variable. It is read before ~/.netrc and ~/.ssh/config:
+      #   cmdkey /generic:goft:ftp://invoice-ftp /user:uploader /pass:secret
+      #   cmdkey /generic:goft:sftp://invoice-sftp /user:uploader /pass:secret
+      # private_key_passphrase is not read from the store; it unlocks a file rather
+      # than authenticating to a host.
+      # use_credential_manager: true            # false stops the store being read
+      # credential_target: LegacyEntry          # read this entry instead of goft:<protocol>://<host>
+
+      # share: shared                           # smb only; do not repeat it in `path`
+      # domain: WORKGROUP                       # smb only
+
+      # Whether this side treats A.csv and a.csv as one name. Left out, goft
+      # decides: a directory on Windows or macOS and an SMB share do, an sftp or ftp
+      # server is taken not to, since neither protocol can be asked. Set it for a
+      # server that does, such as OpenSSH on Windows, so that two files differing
+      # only in case are not sent onto one name, and an existing file under another
+      # case is recognised.
+      # case_insensitive: true
+
+      # How long opening a connection may take, all of it: for sftp asking
+      # ssh-agent for its keys, then the TCP connection, the handshake, the login
+      # and, for smb, mounting the share. A server that accepts the connection and
+      # then says nothing is given up on after this, and the attempt counts as a
+      # failure like any other.
+      # connect_timeout: 30s
+      #
+      # How long an open connection may go without moving any data while something
+      # is waiting on it. Past that it is dropped and the file tried again over a
+      # new one, as for any other dropped connection. It measures silence, not
+      # duration: a large file that keeps moving is never cut off, however long it
+      # takes. 0 turns it off.
+      # io_timeout: 5m
+
+    # --- Which files take part. Applied to the sending side. ---
+
+    recursive: false              # true also descends into subdirectories
+    include: ["*.csv"]            # a file must match one of these
+    exclude: ["*.tmp", "*.part", ".*"]  # ...and none of these; also prunes directories
+    max_file_size_mb: 500         # 0 or omitted means no limit; larger files are skipped
+
+    # How long a file's size and timestamp must stay unchanged before it is
+    # considered finished being written. Under the service, a file is picked up
+    # by the first scan that has seen it unchanged this long, so once it stops
+    # changing it waits for the next scan and then for this, rounded up to whole
+    # poll intervals: 5 to 10 seconds with the values below.
+    stable_duration: 3s
+    poll_interval: 5s             # pause between cycles while running as a service
+    workers: 4                    # files transferred in parallel; also the connection count
+
+    # --- What happens to each file. ---
+
+    # hash   compare xxHash after reading the file back from the destination
+    # length compare sizes only
+    # none   accept anything that did not error
+    verify: hash
+
+    # skip      leave an existing destination file alone
+    # overwrite replace it, unless `verify` shows the two are already identical
+    on_exists: skip
+
+    # none   leave the source file where it is
+    # delete remove it
+    # move   relocate it under move_to, keeping its relative path (send only)
+    post_action: move
+    move_to: /data/done/invoice   # required for move; must not be inside local.path
+
+    # Remove a subdirectory of the sending side once the transfer has taken the
+    # last file out of it, and its parent too if that leaves it empty. The sending
+    # root itself is never removed, and neither is a directory goft did not empty:
+    # one that was already empty, or that something wrote to in the meantime, is
+    # left alone. Needs post_action delete or move, since with none the source
+    # files stay where they are.
+    remove_empty_dirs: false
+
+    # --- Retrying a failed file. ---
+
+    # A file that fails is attempted again within the same cycle, but only when the
+    # error could plausibly go differently next time: a dropped connection or a
+    # failed verification is retried, while a missing file, a permission error or a
+    # 5xx reply from the server is not. The connection is rebuilt before each retry,
+    # because retrying over a connection that has just died would fail identically.
+    retry:
+      max_attempts: 3           # counts the first try; 1 disables retrying
+      interval: 2s              # wait before the first retry
+      backoff: 2.0              # multiply the wait each time; 1.0 keeps it constant
+
+    # --- Logging. ---
+
+    log:
+      path: /var/log/goft/invoice-upload.log   # empty writes to stdout, or stderr when the console is on
+      level: info                 # debug | info | warn | error
+      rotation: daily             # size | daily | monthly
+
+      # Which parameters each transferred file is recorded with. Leave the key out
+      # for all of those below but rate_mibs, which joins them at debug level; that
+      # is what most jobs want. Name fields to write exactly those and nothing
+      # else, at debug level as at any other.
+      #
+      #   src          where the file was read from, in full
+      #   dst          where the file was written, in full
+      #   protocol     ftp | sftp | smb | local
+      #   bytes        bytes transferred
+      #   duration_ms  how long the file took
+      #   verify       the verification method used
+      #   result       success | skipped | failed
+      #   reason       why it was skipped
+      #   error        why it failed
+      #   hash_src     xxHash of what was sent
+      #   hash_dst     xxHash read back from the destination
+      #   attempt      how many tries it took, when more than one
+      #   rate_mibs    transfer rate, on transferred files only; in the default
+      #                set at debug level
+      #
+      # time, level, msg, job, direction, event and cycle_id are always written: a
+      # record missing those cannot be placed. cycle_id is a fresh UUID for each
+      # pass over the sending side, so the records one pass produced can be picked
+      # out of a log a watching process has been appending to for days.
+      # fields: [src, dst, result, error, hash_src, hash_dst]
+      max_size_mb: 100
+      # Old generations beyond these limits are deleted. Only this job's own files
+      # are ever touched — invoice-2026-08-30.log, and lumberjack's backups of it —
+      # so several jobs can log into one directory, even when one job's name is the
+      # start of another's.
+      max_backups: 7
+      max_age_days: 30
+      compress: true
+
+    # `level` is the only verbosity control, and the console output follows it too:
+    #
+    #   error  a file that failed; a cycle or a run that could not start, such as
+    #            an unreachable server
+    #   warn   + settings worth a second look (stable_duration 0, host key
+    #            checking relaxed or accept-new, remove_empty_dirs without
+    #            recursive), an ssh_config that could not be read or a directive in
+    #            it that is ignored, a netrc others can read, an ssh-agent that
+    #            could not be reached, a key skipped because it is locked, a file
+    #            over the size cap the first time it is seen, a retry of a transfer
+    #            or of a post-transfer action, a temporary file or an emptied
+    #            directory that could not be removed, a cycle stopped part way by
+    #            Ctrl+C or SIGTERM
+    #   info   + the settings at startup and a record at shutdown, one record per
+    #            file including the source and destination hashes, each emptied
+    #            directory removed, a summary per cycle
+    #   debug  + the timing of each step, how each connection parameter was
+    #            resolved, what each scan found, a file over the size cap seen
+    #            again, transfer rates
+    #
+    # A configuration that cannot be loaded never reaches the log: goft reports it
+    # on stderr and exits with status 2.

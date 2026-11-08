@@ -8,7 +8,7 @@ import (
 )
 
 func TestCycleWaitBacksOffWhileCyclesFail(t *testing.T) {
-	e := &Engine{cfg: &config.Config{PollInterval: time.Second}}
+	e := &Engine{cfg: &config.Job{PollInterval: time.Second}}
 
 	for _, tc := range []struct {
 		failures int
@@ -29,7 +29,7 @@ func TestCycleWaitBacksOffWhileCyclesFail(t *testing.T) {
 func TestCycleWaitNeverGoesBelowThePollInterval(t *testing.T) {
 	// A job that polls less often than the cap is already gentle enough; the
 	// backoff must not speed it up.
-	e := &Engine{cfg: &config.Config{PollInterval: 30 * time.Minute}}
+	e := &Engine{cfg: &config.Job{PollInterval: 30 * time.Minute}}
 
 	if got := e.cycleWait(0); got != 30*time.Minute {
 		t.Errorf("cycleWait(0) = %v, want the configured interval", got)
@@ -40,7 +40,7 @@ func TestCycleWaitNeverGoesBelowThePollInterval(t *testing.T) {
 }
 
 func TestCycleWaitReturnsToNormalAfterASuccess(t *testing.T) {
-	e := &Engine{cfg: &config.Config{PollInterval: time.Second}}
+	e := &Engine{cfg: &config.Job{PollInterval: time.Second}}
 
 	// Serve resets the counter on a successful cycle, so a brief outage costs
 	// nothing once it clears.

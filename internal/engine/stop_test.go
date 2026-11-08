@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
 	"goft/internal/fsys"
 )
 
@@ -44,7 +43,7 @@ func TestStoppingFinishesTheFileUnderWayAndStartsNoOther(t *testing.T) {
 	var logBuf bytes.Buffer
 	var summary Summary
 	e := New(Options{
-		Config: h.cfg, Direction: config.DirSend,
+		Job:       h.cfg,
 		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
 		NewDst:    func(context.Context) (fsys.FS, error) { return dst, nil },
 		Logger:    slog.New(slog.NewJSONHandler(&logBuf, nil)),

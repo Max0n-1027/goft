@@ -13,12 +13,14 @@ import (
 	"time"
 )
 
-// runCapturing is scenario.run with the output collected rather than printed.
-func runCapturing(t *testing.T, s *scenario, args ...string) (string, int) {
+// runCapturing runs the scenario's job once in direction dir, as
+// scenario.send and scenario.recv do, with the output collected rather than
+// printed.
+func runCapturing(t *testing.T, s *scenario, dir string, args ...string) (string, int) {
 	t.Helper()
 	var out strings.Builder
 	resetFlags()
-	rootCmd.SetArgs(append(args, "-c", s.cfgPath))
+	rootCmd.SetArgs(runJobArgs(t, s.cfgPath, dir, args...))
 	rootCmd.SetOut(&out)
 	code := Execute()
 	rootCmd.SetOut(os.Stdout)
@@ -61,7 +63,7 @@ func TestLockedSourceFileIsTransferredOnceTheLockClears(t *testing.T) {
 	release := time.AfterFunc(300*time.Millisecond, func() { syscall.CloseHandle(h) })
 	defer release.Stop()
 
-	if code := s.run("send"); code != 0 {
+	if code := s.send(); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := s.readRemote("locked.csv"); got != "payload" {
@@ -83,7 +85,7 @@ func TestJobFileWithCRLFLineEndings(t *testing.T) {
 	}
 	s.writeLocal("a.csv", "payload")
 
-	if code := s.run("send"); code != 0 {
+	if code := s.send(); code != 0 {
 		t.Fatalf("exit code = %d, want 0: a CRLF job file was rejected", code)
 	}
 	if got := s.readRemote("a.csv"); got != "payload" {
@@ -99,7 +101,7 @@ func TestJapaneseAndSpacedNames(t *testing.T) {
 		s.writeLocal(name, "payload")
 	}
 
-	if code := s.run("send"); code != 0 {
+	if code := s.send(); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	for _, name := range []string{"請求書_2026年01月.csv", "monthly report.csv", "2026/01/明細.csv"} {

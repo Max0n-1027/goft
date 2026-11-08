@@ -7,17 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
 	"goft/internal/fsys"
 )
 
 func (h *harness) serve(ctx context.Context) error {
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
 	return e.Serve(ctx)
 }

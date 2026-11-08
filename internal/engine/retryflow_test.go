@@ -126,12 +126,11 @@ func TestRetryStopsWhenTheRunIsCancelled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
-		Single:    true,
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Single: true,
 	})
 
 	done := make(chan struct{})
@@ -190,7 +189,7 @@ func TestAnArchiveCollisionIsNotRetried(t *testing.T) {
 
 	var buf bytes.Buffer
 	e := New(Options{
-		Config: h.cfg, Direction: config.DirSend,
+		Job:    h.cfg,
 		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
 		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
 		Logger: slog.New(slog.NewJSONHandler(&buf, nil)), Single: true,
@@ -226,7 +225,7 @@ func TestAConnectionRebuiltForARetryOutlivesTheWorkers(t *testing.T) {
 		return fs, nil
 	}
 	e := New(Options{
-		Config: h.cfg, Direction: config.DirSend,
+		Job:    h.cfg,
 		NewSrc: func(ctx context.Context) (fsys.FS, error) { return record(ctx, h.src) },
 		NewDst: func(ctx context.Context) (fsys.FS, error) { return record(ctx, h.dst) },
 		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)), Single: true,

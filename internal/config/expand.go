@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spf13/viper"
-
 	"goft/internal/i18n"
 )
 
@@ -28,7 +26,7 @@ var variable = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 // the shell would, turned a forgotten export into an empty password that
 // surfaced much later as an authentication failure with no hint as to why. A
 // variable set to the empty string is accepted: that is a decision someone made.
-func expandEnv(v *viper.Viper) error {
+func expandEnv(tree map[string]any) error {
 	var missing []string
 	expand := func(key, s string) string {
 		return variable.ReplaceAllStringFunc(s, func(ref string) string {
@@ -41,28 +39,32 @@ func expandEnv(v *viper.Viper) error {
 		})
 	}
 
-	for _, key := range v.AllKeys() {
-		switch val := v.Get(key).(type) {
+	// Values are reached wherever they are: in a section, in a list, in a
+	// section in a list — which is where every job's settings are.
+	var walk func(key string, v any) any
+	walk = func(key string, v any) any {
+		switch x := v.(type) {
 		case string:
-			if expanded := expand(key, val); expanded != val {
-				v.Set(key, expanded)
-			}
-		case []any:
-			changed := false
-			out := make([]any, len(val))
-			for i, item := range val {
-				out[i] = item
-				if s, ok := item.(string); ok {
-					if expanded := expand(key, s); expanded != s {
-						out[i], changed = expanded, true
-					}
+			return expand(key, x)
+		case map[string]any:
+			for k, item := range x {
+				child := k
+				if key != "" {
+					child = key + "." + k
 				}
+				x[k] = walk(child, item)
 			}
-			if changed {
-				v.Set(key, out)
+			return x
+		case []any:
+			for i, item := range x {
+				x[i] = walk(fmt.Sprintf("%s[%d]", key, i), item)
 			}
+			return x
+		default:
+			return v
 		}
 	}
+	walk("", tree)
 
 	if len(missing) > 0 {
 		sort.Strings(missing)

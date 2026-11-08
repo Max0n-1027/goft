@@ -41,8 +41,8 @@ stable_duration: 0s
 %s
 `, local, remote, extra)
 
-	path := filepath.Join(p.t.TempDir(), "job.yaml")
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	path := filepath.Join(p.t.TempDir(), "goft.yaml")
+	if err := os.WriteFile(path, []byte(jobYAML(body)), 0o600); err != nil {
 		p.t.Fatal(err)
 	}
 	return path
@@ -68,12 +68,14 @@ func (p *localPair) read(dir, name string) string {
 	return string(b)
 }
 
-func (p *localPair) run(args ...string) int {
+// send and recv run the pair's job once in that direction.
+func (p *localPair) send(args ...string) int {
 	p.t.Helper()
-	resetFlags()
-	rootCmd.SetArgs(append(args, "-c", p.cfgPath))
-	rootCmd.SetOut(os.Stdout)
-	return Execute()
+	return runJob(p.t, p.cfgPath, "send", args...)
+}
+func (p *localPair) recv(args ...string) int {
+	p.t.Helper()
+	return runJob(p.t, p.cfgPath, "recv", args...)
 }
 
 func TestLocalSendCopiesBetweenTwoDirectories(t *testing.T) {
@@ -81,7 +83,7 @@ func TestLocalSendCopiesBetweenTwoDirectories(t *testing.T) {
 	p.write(p.src, "invoice.csv", "id,amount\n1,100\n")
 	p.write(p.src, "2026-08/invoice.csv", "id,amount\n2,200\n")
 
-	if code := p.run("send", "--no-console"); code != 0 {
+	if code := p.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := p.read(p.dst, "invoice.csv"); got != "id,amount\n1,100\n" {
@@ -100,7 +102,7 @@ func TestLocalRecvCopiesTheOtherWay(t *testing.T) {
 	p := newLocalPair(t, "verify: hash\n")
 	p.write(p.dst, "report.csv", "downloaded\n")
 
-	if code := p.run("recv", "--no-console"); code != 0 {
+	if code := p.recv("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	if got := p.read(p.src, "report.csv"); got != "downloaded\n" {
@@ -111,12 +113,12 @@ func TestLocalRecvCopiesTheOtherWay(t *testing.T) {
 func TestLocalSendSkipsWhatIsAlreadyThere(t *testing.T) {
 	p := newLocalPair(t, "on_exists: skip\n")
 	p.write(p.src, "invoice.csv", "id,amount\n1,100\n")
-	if code := p.run("send", "--no-console"); code != 0 {
+	if code := p.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 
 	// A second pass has nothing to do, and says so rather than failing.
-	if code := p.run("send", "--no-console"); code != 0 {
+	if code := p.send("--no-console"); code != 0 {
 		t.Fatalf("second run exit code = %d, want 0", code)
 	}
 }
@@ -146,7 +148,7 @@ func TestLocalPairRejectsOverlappingDirectories(t *testing.T) {
 	p := newLocalPair(t, "")
 	p.cfgPath = p.config(p.src, filepath.Join(p.src, "done"), "")
 
-	if code := p.run("send", "--no-console"); code != 2 {
+	if code := p.send("--no-console"); code != 2 {
 		t.Errorf("exit code = %d, want 2: a configuration mistake stops the run before it starts", code)
 	}
 }
@@ -171,38 +173,42 @@ func TestLocalPairAcceptsADestinationThatDoesNotExistYet(t *testing.T) {
 	}
 }
 
-func TestRelativePathsAreRecordedInFull(t *testing.T) {
-	// A job file may name its directories relative to where goft runs, but the
-	// log it writes is read long after that working directory is forgotten.
+func TestRelativePathsFollowTheConfigurationFile(t *testing.T) {
+	// A configuration may name its directories relative to itself. They mean
+	// the same thing whatever directory goft is started from — for a service,
+	// one nobody chooses — and the log records them in full, since it is read
+	// long after anyone remembers where the file was.
 	work := t.TempDir()
-	t.Chdir(work)
+	t.Chdir(t.TempDir())
 	for _, d := range []string{"out", "backup"} {
-		if err := os.MkdirAll(d, 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Join(work, d), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := os.WriteFile(filepath.Join("out", "a.csv"), []byte("x"), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(work, "out", "a.csv"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("job.yaml", []byte(`
+	cfg := filepath.Join(work, "goft.yaml")
+	if err := os.WriteFile(cfg, []byte(jobYAML(`
 local:
   path: out
 remote:
   protocol: local
-  path: backup
+  path: ./backup
 stable_duration: 0s
 log:
   path: goft.log
-`), 0o600); err != nil {
+`)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	resetFlags()
-	rootCmd.SetArgs([]string{"send", "-c", "job.yaml", "--no-console"})
-	if code := Execute(); code != 0 {
+	if code := runJob(t, cfg, "send", "--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 
+	if _, err := os.Stat(filepath.Join(work, "backup", "a.csv")); err != nil {
+		t.Errorf("the file did not arrive next to the configuration: %v", err)
+	}
 	b, err := os.ReadFile(filepath.Join(work, "goft.log"))
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +236,7 @@ func TestTheLogOpensWithTheSettings(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "goft.log")
 	p.cfgPath = p.config(p.src, p.dst, "log:\n  path: "+logFile+"\n")
 
-	if code := p.run("send", "--no-console"); code != 0 {
+	if code := p.send("--no-console"); code != 0 {
 		t.Fatalf("exit code = %d, want 0", code)
 	}
 	b, err := os.ReadFile(logFile)
@@ -262,7 +268,7 @@ func TestSendStopsCleanlyOnAnInterrupt(t *testing.T) {
 	p.write(p.src, "invoice.csv", "id\n")
 
 	done := make(chan int, 1)
-	go func() { done <- p.run("send", "--no-console") }()
+	go func() { done <- p.send("--no-console") }()
 
 	// The signal must not arrive before the run is listening for it, or it
 	// takes the whole test binary down. The settings record is written after

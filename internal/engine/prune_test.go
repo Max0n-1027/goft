@@ -137,11 +137,10 @@ func TestADirectoryThatCannotBeRemovedIsOnlyAWarning(t *testing.T) {
 	h.src.FailOp(fsys.OpRemove, errors.New("directory not empty"))
 
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
 
 	c := &conn{e: e, ctx: context.Background(), src: h.src, dst: h.dst}
@@ -160,11 +159,10 @@ func TestPruningLeavesADirectoryThatFilledUpAgain(t *testing.T) {
 	h.write(h.srcDir, "2026-08/late-arrival.csv", "id\n")
 
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(io.Discard, nil)),
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(io.Discard, nil)),
 	})
 
 	c := &conn{e: e, ctx: context.Background(), src: h.src, dst: h.dst}

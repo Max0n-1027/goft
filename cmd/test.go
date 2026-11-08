@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,15 +20,15 @@ import (
 )
 
 var testCmd = &cobra.Command{
-	Use:   "test",
-	Short: i18n.N("Check the configuration and the connection without transferring anything"),
-	Long: i18n.N("Check the configuration and the connection without transferring anything.\n\n" +
-		"Both directions are reported, because the configuration file does not say\n" +
-		"which one a job will be used for. A read-only account fails the send check\n" +
-		"and still exits 0; only a remote that supports neither direction exits 2."),
-	Args: cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, _ []string) error {
-		return runTest(cmd.Context(), cmd.OutOrStdout())
+	Use:   "test [job...]",
+	Short: i18n.N("Check the configuration and each job's connection without transferring anything"),
+	Long: i18n.N("Check the configuration and each job's connection without transferring anything.\n\n" +
+		"Each job is checked the way it uses each side: the side it takes files from\n" +
+		"must be readable, the side it puts them on writable, and a side it deletes\n" +
+		"from writable as well. With no job named, every enabled job is checked. A\n" +
+		"job that cannot be used as configured makes goft test exit 2."),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runTest(cmd.Context(), cmd.OutOrStdout(), args)
 	},
 }
 
@@ -37,6 +38,7 @@ func init() { rootCmd.AddCommand(testCmd) }
 // here and translated as they are printed.
 var (
 	checkConfig  = i18n.N("config")
+	checkJob     = i18n.N("job")
 	checkWarning = i18n.N("warning")
 	checkLocal   = i18n.N("local")
 	checkResolve = i18n.N("resolve")
@@ -44,6 +46,7 @@ var (
 	checkRemote  = i18n.N("remote")
 	checkRecv    = i18n.N("recv (list)")
 	checkSend    = i18n.N("send (write)")
+	checkDelete  = i18n.N("recv (delete)")
 
 	statusOK     = i18n.N("OK")
 	statusNG     = i18n.N("NG")
@@ -62,7 +65,7 @@ func status(result, detail string) string {
 	return tr.Text(result) + "  " + detail
 }
 
-func runTest(ctx context.Context, out io.Writer) error {
+func runTest(ctx context.Context, out io.Writer, names []string) error {
 	var w console.Table
 	flush := func() { _, _ = w.WriteTo(out) }
 	defer flush()
@@ -75,34 +78,53 @@ func runTest(ctx context.Context, out io.Writer) error {
 	if err != nil {
 		return startupError(err)
 	}
-	cfg, err := config.Load(cfgPath)
+	cfg, err := loadConfig()
 	if err != nil {
-		return startupError(err)
-	}
-	if err := config.Validate(cfg); err != nil {
 		report(checkConfig, cfgPath, status(statusFailed, ""))
 		flush()
-		return startupError(i18n.Errorf("invalid configuration:\n%w", err))
+		return startupError(err)
 	}
-	report(checkConfig, cfgPath, status(statusOK, ""))
-
-	// post_action: move is only valid for send; say so rather than letting it
-	// surprise whoever later runs recv with this file.
-	if err := config.ValidateForDirection(cfg, config.DirRecv); err != nil {
-		report(checkConfig, "recv", status(statusNG, tr.Error(err)))
+	report(checkConfig, cfg.SourceFile, status(statusOK, ""))
+	for _, f := range cfg.JobFiles {
+		report(checkConfig, f, status(statusOK, ""))
 	}
 
-	for _, warning := range config.Warnings(cfg) {
+	jobs, err := pick(cfg, names)
+	if err != nil {
+		flush()
+		return startupError(err)
+	}
+	var unusable []string
+	for _, j := range jobs {
+		w.Row("")
+		report(checkJob, j.Name, string(j.Direction))
+		if !testJob(ctx, j, report) {
+			unusable = append(unusable, j.Name)
+		}
+	}
+	if len(unusable) > 0 {
+		flush()
+		return startupError(i18n.Errorf("jobs that cannot be used as configured: %s", strings.Join(unusable, ", ")))
+	}
+	return nil
+}
+
+// testJob checks one job the way it uses each side, and reports whether it can
+// run as configured.
+func testJob(ctx context.Context, j *config.Job, report reportFunc) bool {
+	for _, warning := range config.Warnings(j) {
 		report(checkWarning, warning.Localize(tr), "")
 	}
 
-	checkLocalDir(cfg.Local.Path, report)
+	// The local side is written to by recv, and by send when the job takes its
+	// sources away or tidies up the directories it emptied.
+	takesAway := j.PostAction == config.PostDelete || j.PostAction == config.PostMove || j.RemoveEmptyDirs
+	ok := checkLocalDir(j.Local.Path, j.Direction == config.DirRecv || takesAway, report)
 
-	resolved, err := fsys.Resolve(cfg.Remote)
+	resolved, err := fsys.Resolve(j.Remote)
 	if err != nil {
-		report(checkResolve, string(cfg.Remote.Protocol), status(statusFailed, ""))
-		flush()
-		return startupError(err)
+		report(checkResolve, string(j.Remote.Protocol), status(statusFailed, tr.Error(err)))
+		return false
 	}
 	for _, t := range resolved.Trace {
 		report(checkResolve, t.Field+" = "+t.Display(tr), "("+t.Source+")")
@@ -114,27 +136,27 @@ func runTest(ctx context.Context, out io.Writer) error {
 	// Nothing is dialled for a directory on this machine, so calling the check
 	// "connect" would describe something that did not happen.
 	opened := checkConnect
-	if cfg.Remote.IsLocal() {
+	if j.Remote.IsLocal() {
 		opened = checkRemote
 	}
-
-	remote, err := fsys.NewRemote(ctx, cfg.Remote)
+	remote, err := fsys.NewRemote(ctx, j.Remote)
 	if err != nil {
-		report(opened, string(cfg.Remote.Protocol), status(statusFailed, ""))
-		flush()
-		return startupError(err)
+		report(opened, string(j.Remote.Protocol), status(statusFailed, tr.Error(err)))
+		return false
 	}
 	defer remote.Close()
 	report(opened, remote.Describe(), status(statusOK, ""))
 
-	canRecv := checkList(ctx, remote, report)
-	canSend := checkSendDir(ctx, cfg.Remote, remote, canRecv, report)
-
-	if !canRecv && !canSend {
-		flush()
-		return startupError(i18n.Errorf("the remote can be reached but is usable in neither direction"))
+	if j.Direction == config.DirSend {
+		return checkSendDir(ctx, j.Remote, remote, report) && ok
 	}
-	return nil
+	listed := checkList(ctx, remote, report)
+	if listed && takesAway {
+		// Deleting is not something to try on the server's real files, but a
+		// directory that cannot be written to will not let one go either.
+		listed = probeWrite(ctx, remote, checkDelete, tr.Text(i18n.N("writable")), report)
+	}
+	return listed && ok
 }
 
 // checkSendDir reports whether a send job could write to the remote.
@@ -142,9 +164,14 @@ func runTest(ctx context.Context, out io.Writer) error {
 // A destination that does not exist yet is the normal state before the first
 // transfer, so this is not treated as a failure: the parent directory is
 // probed instead, which is where the destination will be created.
-func checkSendDir(ctx context.Context, cfg config.Remote, remote fsys.FS, exists bool, report reportFunc) bool {
-	if exists {
-		return probeWrite(ctx, remote, tr.Text(i18n.N("writable")), report)
+func checkSendDir(ctx context.Context, cfg config.Remote, remote fsys.FS, report reportFunc) bool {
+	_, err := remote.List(ctx, "")
+	switch {
+	case err == nil:
+		return probeWrite(ctx, remote, checkSend, tr.Text(i18n.N("writable")), report)
+	case !errors.Is(err, fs.ErrNotExist):
+		report(checkSend, tr.Error(err), status(statusNG, ""))
+		return false
 	}
 
 	parent := cfg
@@ -161,37 +188,36 @@ func checkSendDir(ctx context.Context, cfg config.Remote, remote fsys.FS, exists
 	}
 	defer pfs.Close()
 
-	return probeWrite(ctx, pfs, tr.Sprintf("%s is writable; %s will be created on first transfer", parent.Path, cfg.Path), report)
+	return probeWrite(ctx, pfs, checkSend, tr.Sprintf("%s is writable; %s will be created on first transfer", parent.Path, cfg.Path), report)
 }
 
 // checkLocalDir reports on the local directory, which a send job reads from and a
-// recv job writes to.
+// recv job writes to, and reports whether it can be used as the job needs.
 //
 // Writability is probed rather than inferred: a directory that exists and is
 // listable can still refuse a file, and finding that out during the first
 // transfer is finding out too late.
-func checkLocalDir(dir string, report reportFunc) {
-	fi, err := os.Stat(dir)
-	switch {
-	case err != nil:
+func checkLocalDir(dir string, needWrite bool, report reportFunc) bool {
+	if _, err := os.ReadDir(dir); err != nil {
 		report(checkLocal, dir, status(statusFailed, tr.Error(err)))
-		return
-	case !fi.IsDir():
-		report(checkLocal, dir, status(statusFailed, tr.Text(i18n.N("not a directory"))))
-		return
+		return false
 	}
 
 	probe := filepath.Join(dir, fmt.Sprintf(".goft-test-%d", os.Getpid()))
 	if err := os.Mkdir(probe, 0o755); err != nil {
-		// Reading still works, so a send job is fine; only recv needs to write.
-		report(checkLocal, dir, status(statusOK, tr.Text(i18n.N("readable; not writable, which recv would need"))))
-		return
+		if needWrite {
+			report(checkLocal, dir, status(statusNG, tr.Text(i18n.N("readable; not writable, which this job needs"))))
+			return false
+		}
+		report(checkLocal, dir, status(statusOK, tr.Text(i18n.N("readable; not writable, which this job does not need"))))
+		return true
 	}
 	if err := os.Remove(probe); err != nil {
 		report(checkLocal, dir, status(statusOK, tr.Sprintf("probe directory left behind: %s", probe)))
-		return
+		return true
 	}
 	report(checkLocal, dir, status(statusOK, tr.Text(i18n.N("readable and writable"))))
+	return true
 }
 
 // checkList reports whether the remote directory can be read, which is what a
@@ -226,16 +252,16 @@ func parentDir(cfg config.Remote) string {
 // The destination directory itself is never created here: a connectivity check
 // that leaves an unexpected directory behind is worse than an unanswered
 // question.
-func probeWrite(ctx context.Context, target fsys.FS, detail string, report reportFunc) bool {
+func probeWrite(ctx context.Context, target fsys.FS, check, detail string, report reportFunc) bool {
 	probe := fmt.Sprintf(".goft-test-%d", os.Getpid())
 	if err := target.MkdirAll(ctx, probe); err != nil {
-		report(checkSend, tr.Error(err), status(statusNG, ""))
+		report(check, tr.Error(err), status(statusNG, ""))
 		return false
 	}
 	if err := target.Remove(ctx, probe); err != nil {
-		report(checkSend, tr.Sprintf("probe directory left behind: %s", probe), status(statusOK, ""))
+		report(check, tr.Sprintf("probe directory left behind: %s", probe), status(statusOK, ""))
 		return true
 	}
-	report(checkSend, detail, status(statusOK, ""))
+	report(check, detail, status(statusOK, ""))
 	return true
 }

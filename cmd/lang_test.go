@@ -53,7 +53,7 @@ func run(t *testing.T, args ...string) (code int, stdout, stderr string) {
 
 func TestHelpIsWrittenInTheLanguageAskedFor(t *testing.T) {
 	_, ja, _ := run(t, "--lang", "ja", "--help")
-	for _, want := range []string{"使い方:", "コマンド:", "フラグ:", "転送はせずに、設定と接続を確認する", "表示する言語", "goft のヘルプを表示する"} {
+	for _, want := range []string{"使い方:", "コマンド:", "フラグ:", "転送はせずに、設定と各ジョブの接続を確認する", "設定にあるジョブを一覧表示する", "表示する言語", "goft のヘルプを表示する"} {
 		if !strings.Contains(ja, want) {
 			t.Errorf("Japanese help does not contain %q:\n%s", want, ja)
 		}
@@ -61,7 +61,7 @@ func TestHelpIsWrittenInTheLanguageAskedFor(t *testing.T) {
 
 	// Asking again in English puts back every text the Japanese replaced.
 	_, en, _ := run(t, "--lang", "en", "--help")
-	for _, want := range []string{"Usage:", "Available Commands:", "Check the configuration and the connection without transferring anything", "help for goft"} {
+	for _, want := range []string{"Usage:", "Available Commands:", "Check the configuration and each job's connection without transferring anything", "--run-once", "help for goft"} {
 		if !strings.Contains(en, want) {
 			t.Errorf("English help does not contain %q:\n%s", want, en)
 		}
@@ -72,8 +72,8 @@ func TestHelpIsWrittenInTheLanguageAskedFor(t *testing.T) {
 }
 
 func TestSubcommandHelpIsTranslatedToo(t *testing.T) {
-	_, out, _ := run(t, "--lang", "ja", "serve", "send", "--help")
-	for _, want := range []string{"ローカルのディレクトリを監視して相手側へ転送する", "共通フラグ:", "send のヘルプを表示する", "転送はせずに、転送するファイルを一覧表示する"} {
+	_, out, _ := run(t, "--lang", "ja", "test", "--help")
+	for _, want := range []string{"転送はせずに、設定と各ジョブの接続を確認します。", "共通フラグ:", "test のヘルプを表示する", "設定ファイルのパス"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help does not contain %q:\n%s", want, out)
 		}
@@ -117,11 +117,12 @@ func TestVersionReadsTheSameInEveryLanguage(t *testing.T) {
 
 func TestErrorsAreReportedInJapanese(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "bad.yaml")
-	if err := os.WriteFile(cfg, []byte("local:\n  path: "+t.TempDir()+"\nremote:\n  protocol: sftp\n  path: /x\nworkers: 0\n"), 0o600); err != nil {
+	body := jobYAML("local:\n  path: " + t.TempDir() + "\nremote:\n  protocol: sftp\n  path: /x\nworkers: 0\n")
+	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	code, _, stderr := run(t, "--lang", "ja", "send", "-c", cfg)
-	for _, want := range []string{"goft: 設定 " + cfg + " に誤りがあります:", "remote.host は必須です", "workers は 1 以上にしてください"} {
+	code, _, stderr := run(t, "--lang", "ja", "--run-once", "job", "-c", cfg)
+	for _, want := range []string{"goft: 設定 " + cfg + " に誤りがあります:", "ジョブ job: remote.host は必須です", "ジョブ job: workers は 1 以上にしてください"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr does not contain %q:\n%s", want, stderr)
 		}
@@ -133,10 +134,10 @@ func TestErrorsAreReportedInJapanese(t *testing.T) {
 
 func TestJapaneseOnScreenAndEnglishInTheLog(t *testing.T) {
 	s := newScenario(t, "")
-	logPath := filepath.Join(t.TempDir(), "job.log")
+	logPath := s.logTo()
 	s.writeLocal("請求書.csv", "id,amount\n1,100\n")
 
-	code, out, _ := run(t, "--lang", "ja", "send", "-c", s.cfgPath, "--console", "--log-file", logPath)
+	code, out, _ := run(t, "--lang", "ja", "--run-once", "e2e", "-c", s.cfgPath, "--console")
 	if code != 0 {
 		t.Fatalf("exit code = %d\n%s", code, out)
 	}
@@ -167,7 +168,7 @@ func TestTheTestCommandSpeaksJapanese(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d\n%s", code, out)
 	}
-	for _, want := range []string{"設定", "ローカル", "読み書き可能", "解決", "host = 127.0.0.1", "(yaml)", "接続", "受信（一覧）", "0 件", "送信（書込）", "書き込み可能", "警告"} {
+	for _, want := range []string{"設定", "ローカル", "読み書き可能", "解決", "host = 127.0.0.1", "(yaml)", "接続", "ジョブ", "e2e", "送信（書込）", "書き込み可能", "警告"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("goft test does not contain %q:\n%s", want, out)
 		}

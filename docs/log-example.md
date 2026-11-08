@@ -10,25 +10,27 @@ The job sends four files. Two are ordinary, one is larger than the size cap, and
 one sits in a directory the account cannot write to:
 
 ```yaml
-name: invoice-upload
-local:
-  path: /data/out/invoice
-remote:
-  protocol: sftp
-  host: invoice-sftp
-  path: /upload/invoice
-  user: uploader
-  password: ${GOFT_SFTP_PASSWORD}
-recursive: true
-include: ["*.csv", "*.dat"]
-max_file_size_mb: 1
-stable_duration: 3s
-workers: 2
-verify: hash
-on_exists: skip
-log:
-  path: /var/log/goft/invoice-upload.log
-  level: info
+jobs:
+  - name: invoice-upload
+    direction: send
+    local:
+      path: /data/out/invoice
+    remote:
+      protocol: sftp
+      host: invoice-sftp
+      path: /upload/invoice
+      user: uploader
+      password: ${GOFT_SFTP_PASSWORD}
+    recursive: true
+    include: ["*.csv", "*.dat"]
+    max_file_size_mb: 1
+    stable_duration: 3s
+    workers: 2
+    verify: hash
+    on_exists: skip
+    log:
+      path: /var/log/goft/invoice-upload.log
+      level: info
 ```
 
 ## The first pass
@@ -46,7 +48,7 @@ having to be found and dated:
   "direction": "send",
   "event": "lifecycle",
   "config": {
-    "file": "/etc/goft/invoice-upload.yaml",
+    "file": "/etc/goft/goft.yaml",
     "name": "invoice-upload",
     "local": {
       "path": "/data/out/invoice"
@@ -199,8 +201,8 @@ After the settings record, which is the same as the one above:
 ```
 
 An unreachable server ends the run before any file is attempted, so there are no
-transfer records at all — just the settings and the reason. `goft send` exits 2
-here, which is how a monitor tells "could not start" apart from "ran, and some
+transfer records at all — just the settings and the reason. `--run-once` exits
+2 here, which is how a monitor tells "could not start" apart from "ran, and some
 files failed" (exit 1).
 
 ## Level debug
@@ -255,8 +257,8 @@ no longer the file that was reported.
 
 The cap is applied after settling rather than during the scan, so that the file
 is a known one by the time the decision is made. Each of the three passes above
-warns, because each was a separate `goft send`: a new process has nothing to
-remember. Under `serve`, only the first cycle does.
+warns, because each was a separate `goft --run-once`: a new process has nothing
+to remember. Under the service, only the first cycle does.
 
 ## Reading it
 

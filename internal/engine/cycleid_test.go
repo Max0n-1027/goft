@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/config"
 	"goft/internal/fsys"
 )
 
@@ -17,12 +16,11 @@ func cycleRecords(t *testing.T, h *harness, n int) []map[string]any {
 	t.Helper()
 	var buf bytes.Buffer
 	e := New(Options{
-		Config:    h.cfg,
-		Direction: config.DirSend,
-		NewSrc:    func(context.Context) (fsys.FS, error) { return h.src, nil },
-		NewDst:    func(context.Context) (fsys.FS, error) { return h.dst, nil },
-		Logger:    slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
-		Single:    true,
+		Job:    h.cfg,
+		NewSrc: func(context.Context) (fsys.FS, error) { return h.src, nil },
+		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
+		Logger: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
+		Single: true,
 	})
 	for i := 0; i < n; i++ {
 		if _, err := e.RunOnce(context.Background()); err != nil {

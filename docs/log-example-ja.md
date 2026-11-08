@@ -8,25 +8,27 @@
 残る1つはアカウントに書き込み権限のないディレクトリにあります。
 
 ```yaml
-name: invoice-upload
-local:
-  path: /data/out/invoice
-remote:
-  protocol: sftp
-  host: invoice-sftp
-  path: /upload/invoice
-  user: uploader
-  password: ${GOFT_SFTP_PASSWORD}
-recursive: true
-include: ["*.csv", "*.dat"]
-max_file_size_mb: 1
-stable_duration: 3s
-workers: 2
-verify: hash
-on_exists: skip
-log:
-  path: /var/log/goft/invoice-upload.log
-  level: info
+jobs:
+  - name: invoice-upload
+    direction: send
+    local:
+      path: /data/out/invoice
+    remote:
+      protocol: sftp
+      host: invoice-sftp
+      path: /upload/invoice
+      user: uploader
+      password: ${GOFT_SFTP_PASSWORD}
+    recursive: true
+    include: ["*.csv", "*.dat"]
+    max_file_size_mb: 1
+    stable_duration: 3s
+    workers: 2
+    verify: hash
+    on_exists: skip
+    log:
+      path: /var/log/goft/invoice-upload.log
+      level: info
 ```
 
 ## 1回目の実行
@@ -43,7 +45,7 @@ log:
   "direction": "send",
   "event": "lifecycle",
   "config": {
-    "file": "/etc/goft/invoice-upload.yaml",
+    "file": "/etc/goft/goft.yaml",
     "name": "invoice-upload",
     "local": {
       "path": "/data/out/invoice"
@@ -182,7 +184,7 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 ```
 
 繋がらないサーバーは、ファイルを1つも試す前に実行を終わらせます。転送のレコードは1件も出ず、設定と理由だけが残ります。
-このとき `goft send` の終了コードは 2 です。監視する側は「そもそも起動できていない」と
+このとき `--run-once` の終了コードは 2 です。監視する側は「そもそも起動できていない」と
 「動いたが一部のファイルが失敗した」（終了コード 1）を区別できます。
 
 ## デバッグレベル
@@ -231,8 +233,8 @@ CSV は2つとも届いていて、`hash_src` と `hash_dst` が一致してい�
 ファイルが変化した場合（サイズが増えた、書き直された）は再び警告が出ます。もう「報告済みのファイル」ではないからです。
 
 サイズ判定は走査時ではなく安定化判定の後に行います。判定の時点でファイルが既知のものになっているようにするためです。
-上の3回の実行がいずれも警告を出しているのは、それぞれ別の `goft send` だからです。新しいプロセスには記憶がありません。
-`serve` であれば警告は最初の周期だけです。
+上の3回の実行がいずれも警告を出しているのは、それぞれ別の `goft --run-once` だからです。新しいプロセスには記憶がありません。
+サービスであれば警告は最初の周期だけです。
 
 ## ログを読む
 

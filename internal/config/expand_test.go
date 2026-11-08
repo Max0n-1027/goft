@@ -17,7 +17,7 @@ remote:
   path: /upload
   password: "pa$word1"
 `)
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ remote:
   path: /upload/${GOFT_TEST_HOST}
 include: ["${GOFT_TEST_PATTERN}"]
 `)
-	cfg, err := Load(p)
+	cfg, err := loadJob(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,7 @@ remote:
   path: /upload
   password: ${GOFT_TEST_SURELY_UNSET}
 `)
-	_, err := Load(p)
+	_, err := loadJob(p)
 	if err == nil {
 		t.Fatal("want an error for a variable that is not set")
 	}
@@ -92,8 +92,8 @@ remote:
   path: /upload
   user: ${GOFT_TEST_EMPTY}
 `)
-	if _, err := Load(p); err != nil {
-		t.Fatalf("Load() = %v, want an empty variable accepted", err)
+	if _, err := loadJob(p); err != nil {
+		t.Fatalf("loadJob() = %v, want an empty variable accepted", err)
 	}
 }
 
@@ -109,7 +109,7 @@ remote:
   path: /upload
   # password: ${GOFT_TEST_SURELY_UNSET}
 `)
-	if _, err := Load(p); err != nil {
-		t.Fatalf("Load() = %v, want a variable in a comment ignored", err)
+	if _, err := loadJob(p); err != nil {
+		t.Fatalf("loadJob() = %v, want a variable in a comment ignored", err)
 	}
 }

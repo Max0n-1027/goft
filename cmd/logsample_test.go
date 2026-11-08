@@ -92,16 +92,16 @@ log:
 `, local, remote.Host, port, remote.User, string(remote.Password),
 			remote.KnownHosts, remoteDir, extra, logPath, level)
 
-		p := filepath.Join(t.TempDir(), "job.yaml")
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		p := filepath.Join(t.TempDir(), "goft.yaml")
+		if err := os.WriteFile(p, []byte(jobYAML(body)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return p
 	}
 
-	run := func(cfgPath string, args ...string) {
+	run := func(cfgPath, direction string) {
 		resetFlags()
-		rootCmd.SetArgs(append(args, "-c", cfgPath, "--no-console"))
+		rootCmd.SetArgs(runJobArgs(t, cfgPath, direction, "--no-console"))
 		rootCmd.SetOut(os.Stdout)
 		Execute()
 	}
@@ -178,8 +178,8 @@ func sanitize(t *testing.T, path string, local, outage, blocked, remote, host st
 	}
 	text = regexp.MustCompile(`/tmp/[^"]*?/known_hosts`).
 		ReplaceAllString(text, "/home/svc-transfer/.ssh/known_hosts")
-	text = regexp.MustCompile(`/tmp/[^"]*?/job\.yaml`).
-		ReplaceAllString(text, "/etc/goft/invoice-upload.yaml")
+	text = regexp.MustCompile(`/tmp/[^"]*?/goft\.yaml`).
+		ReplaceAllString(text, "/etc/goft/goft.yaml")
 	text = regexp.MustCompile(`"path":"[^"]*?goft-(info|debug)\.log"`).
 		ReplaceAllString(text, `"path":"/var/log/goft/invoice-upload.log"`)
 	text = regexp.MustCompile(`dial invoice-sftp:\d+: dial tcp invoice-sftp:\d+:`).
@@ -253,8 +253,8 @@ log:
 `, local, remote.Host, remote.Port, remote.User, string(remote.Password),
 			remote.KnownHosts, remoteDir, capMB, extra)
 
-		p := filepath.Join(t.TempDir(), "job.yaml")
-		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+		p := filepath.Join(t.TempDir(), "goft.yaml")
+		if err := os.WriteFile(p, []byte(jobYAML(body)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		return p
@@ -291,8 +291,8 @@ log:
 		body = regexp.MustCompile(`port = \d+`).ReplaceAllString(body, "port = 22")
 		body = regexp.MustCompile(`/tmp/[^\s]*?/known_hosts`).
 			ReplaceAllString(body, "/home/svc-transfer/.ssh/known_hosts")
-		body = regexp.MustCompile(`/tmp/[^\s]*?/job\.yaml`).
-			ReplaceAllString(body, "/etc/goft/invoice-upload.yaml")
+		body = regexp.MustCompile(`/tmp/[^\s]*?/goft\.yaml`).
+			ReplaceAllString(body, "/etc/goft/goft.yaml")
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			body = strings.ReplaceAll(body, home, "/home/svc-transfer")
 		}
@@ -319,14 +319,14 @@ log:
 
 	save("console-dry-run.txt", capture(func() {
 		resetFlags()
-		rootCmd.SetArgs([]string{"send", "-c", cfgPath(localDir, 1, ""), "--dry-run"})
+		rootCmd.SetArgs(runJobArgs(t, cfgPath(localDir, 1, ""), "send", "--dry-run"))
 		rootCmd.SetOut(os.Stdout)
 		Execute()
 	}), false)
 
 	save("console-send.txt", capture(func() {
 		resetFlags()
-		rootCmd.SetArgs([]string{"send", "-c", cfgPath(localDir, 1, "on_exists: skip"), "--console"})
+		rootCmd.SetArgs(runJobArgs(t, cfgPath(localDir, 1, "on_exists: skip"), "send", "--console"))
 		rootCmd.SetOut(os.Stdout)
 		Execute()
 	}), false)
@@ -334,7 +334,7 @@ log:
 	// The same command again, with everything already delivered.
 	save("console-send-again.txt", capture(func() {
 		resetFlags()
-		rootCmd.SetArgs([]string{"send", "-c", cfgPath(localDir, 1, "on_exists: skip"), "--console"})
+		rootCmd.SetArgs(runJobArgs(t, cfgPath(localDir, 1, "on_exists: skip"), "send", "--console"))
 		rootCmd.SetOut(os.Stdout)
 		Execute()
 	}), false)
@@ -351,7 +351,7 @@ log:
 
 	save("mid-transfer.txt", midTransferListing(t, remoteDir, func() {
 		resetFlags()
-		rootCmd.SetArgs([]string{"send", "-c", bigCfg, "--no-console"})
+		rootCmd.SetArgs(runJobArgs(t, bigCfg, "send", "--no-console"))
 		rootCmd.SetOut(os.Stdout)
 		Execute()
 	}), false)
@@ -463,7 +463,7 @@ func TestGenerateLocalSample(t *testing.T) {
 		}
 	}
 
-	cfg := filepath.Join(t.TempDir(), "job.yaml")
+	cfg := filepath.Join(t.TempDir(), "goft.yaml")
 	body := fmt.Sprintf(`
 name: invoice-archive
 local:
@@ -481,14 +481,14 @@ log:
   path: %s
   level: info
 `, src, dst, logFile)
-	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(cfg, []byte(jobYAML(body)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	clean := func(s string) string {
 		s = strings.ReplaceAll(s, src, "/data/out/invoice")
 		s = strings.ReplaceAll(s, dst, "/backup/invoice")
-		s = strings.ReplaceAll(s, cfg, "/etc/goft/invoice-archive.yaml")
+		s = strings.ReplaceAll(s, cfg, "/etc/goft/goft.yaml")
 		s = strings.ReplaceAll(s, logFile, "/var/log/goft/invoice-archive.log")
 		return s
 	}
@@ -521,7 +521,7 @@ log:
 		done <- string(b)
 	}()
 	resetFlags()
-	rootCmd.SetArgs([]string{"send", "-c", cfg, "--console"})
+	rootCmd.SetArgs(runJobArgs(t, cfg, "send", "--console"))
 	rootCmd.SetOut(os.Stdout)
 	Execute()
 	w.Close()
@@ -557,7 +557,7 @@ func TestGeneratePruningSample(t *testing.T) {
 		}
 	}
 
-	cfg := filepath.Join(t.TempDir(), "job.yaml")
+	cfg := filepath.Join(t.TempDir(), "goft.yaml")
 	body := fmt.Sprintf(`
 name: invoice-archive
 local:
@@ -577,12 +577,12 @@ log:
   path: %s
   level: info
 `, src, dst, logFile)
-	if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(cfg, []byte(jobYAML(body)), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	resetFlags()
-	rootCmd.SetArgs([]string{"send", "-c", cfg, "--no-console"})
+	rootCmd.SetArgs(runJobArgs(t, cfg, "send", "--no-console"))
 	rootCmd.SetOut(os.Stdout)
 	Execute()
 
@@ -592,7 +592,7 @@ log:
 	}
 	text := strings.ReplaceAll(string(log), src, "/data/out/invoice")
 	text = strings.ReplaceAll(text, dst, "/backup/invoice")
-	text = strings.ReplaceAll(text, cfg, "/etc/goft/invoice-archive.yaml")
+	text = strings.ReplaceAll(text, cfg, "/etc/goft/goft.yaml")
 	text = strings.ReplaceAll(text, logFile, "/var/log/goft/invoice-archive.log")
 	if err := os.WriteFile(filepath.Join(out, "pruning.log"), []byte(text), 0o600); err != nil {
 		t.Fatal(err)
@@ -656,8 +656,8 @@ remote:
   use_ssh_config: false
 %sstable_duration: 3s
 `, localDir, remote.Host, remote.Port, remote.User, remote.KnownHosts, remoteDir, auth)
-		cfg := filepath.Join(t.TempDir(), "job.yaml")
-		if err := os.WriteFile(cfg, []byte(body), 0o600); err != nil {
+		cfg := filepath.Join(t.TempDir(), "goft.yaml")
+		if err := os.WriteFile(cfg, []byte(jobYAML(body)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 
@@ -684,8 +684,8 @@ remote:
 		text = regexp.MustCompile(`port = \d+`).ReplaceAllString(text, "port = 22")
 		text = regexp.MustCompile(`/tmp/[^\s]*?/known_hosts`).
 			ReplaceAllString(text, "/home/svc-transfer/.ssh/known_hosts")
-		text = regexp.MustCompile(`/tmp/[^\s]*?/job\.yaml`).
-			ReplaceAllString(text, "/etc/goft/invoice-upload.yaml")
+		text = regexp.MustCompile(`/tmp/[^\s]*?/goft\.yaml`).
+			ReplaceAllString(text, "/etc/goft/goft.yaml")
 		if err := os.WriteFile(filepath.Join(out, name), []byte(realign(text)), 0o600); err != nil {
 			t.Fatal(err)
 		}

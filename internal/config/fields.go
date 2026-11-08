@@ -57,7 +57,7 @@ func (s LogFieldSet) Has(field string) bool { return s[field] }
 // level it also picks up the transfer rate, which is what debug meant before
 // the set became configurable. Naming fields explicitly replaces all of that:
 // the list is then exactly what gets written.
-func (c *Config) LogFields(level slog.Level) LogFieldSet {
+func (c *Job) LogFields(level slog.Level) LogFieldSet {
 	if c.Log.Fields != nil {
 		set := make(LogFieldSet, len(c.Log.Fields))
 		for _, n := range c.Log.Fields {
