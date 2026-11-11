@@ -16,6 +16,7 @@ The commands are:
 	                      without transferring anything
 	service install       register goft as a Windows service (Windows only)
 	service uninstall     stop and remove the Windows service (Windows only)
+	schema                print the JSON Schema of the configuration file
 	version               print the build information
 
 Each job moves files one way: a send job from a local directory to the other
@@ -79,6 +80,13 @@ written in. Every job is checked at startup, alone and against the others —
 two jobs taking from one directory when either deletes or moves what it sends,
 or jobs passing files round in a loop, are refused — and one mistake stops goft
 starting at all.
+
+Before that, every file is checked against the JSON Schema of the
+configuration, which "goft schema" prints and schema/goft.schema.json holds: a
+setting goft does not have, misspelt or in capitals, a value of the wrong type
+or a choice that does not exist is reported on its line, and stops goft too. An
+editor that understands JSON Schema can check the files against it as they are
+written; docs/schema.md shows how.
 
 Credentials need not be written in plain text. Any ${VAR} in a value is
 replaced from the environment, and one that is not set is an error; a $ not

@@ -1,10 +1,21 @@
+# yaml-language-server: $schema=schema/goft.schema.json
+#
 # goft configuration.
+#
+# The line above points an editor that understands JSON Schema at the schema
+# goft checks this file against when it starts, so that it is checked as it is
+# written too. The path is relative to this file: schema/goft.schema.json is
+# there in a release and in the repository, and `goft schema` prints it. See
+# docs/schema.md.
 #
 # One process runs every enabled job below, watching each until it is stopped:
 #
 #   goft -c /etc/goft/goft.yaml                       run as a service
 #   goft -c /etc/goft/goft.yaml --run-once invoice-upload    one job, once
 #   goft -c /etc/goft/goft.yaml jobs                  list the jobs
+#
+# Every setting is written in lower case, as below, and one goft does not have
+# stops it at startup.
 #
 # ${NAME} in any value is replaced from the environment, and a variable that is
 # not set stops goft at startup. A `$` on its own is an ordinary character.

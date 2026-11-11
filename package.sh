@@ -14,8 +14,10 @@
 #   dist/SHA256SUMS
 #
 # An archive holds the binary, both READMEs, the pages under docs/ that they
-# link to, the licence and the annotated example configuration, so an unpacked
-# release is usable without the repository.
+# link to, the licence, the annotated example configuration and the JSON
+# Schema of the configuration, so an unpacked release is usable without the
+# repository. The schema keeps its place, schema/goft.schema.json, so that the
+# example's first line finds it in an archive as it does in the repository.
 #
 # Environment:
 #   VERSION            version stamped into the binaries and the archive names
@@ -35,6 +37,7 @@ readonly BINARY=goft
 readonly OUT_DIR=${OUT_DIR:-build}
 readonly DIST_DIR=${DIST_DIR:-dist}
 readonly EXTRA_FILES=(README.md README-ja.md docs LICENSE goft.example.yaml)
+readonly SCHEMA=schema/goft.schema.json
 
 usage() {
     awk 'NR < 3 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0"
@@ -76,6 +79,8 @@ archive() {
     mkdir -p "$stage"
     cp "$binary" "$stage/"
     cp -R "${EXTRA_FILES[@]}" "$stage/"
+    mkdir -p "$stage/$(dirname "$SCHEMA")"
+    cp "$SCHEMA" "$stage/$SCHEMA"
     find "$stage" -exec touch -d "@$SOURCE_DATE_EPOCH" {} +
 
     if [ "$os" = windows ]; then

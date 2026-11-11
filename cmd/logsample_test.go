@@ -697,3 +697,50 @@ remote:
 	t.Setenv("SSH_AUTH_SOCK", gone)
 	run("agent-unreachable.txt", "  password: secret\n")
 }
+
+// schemaSample is the configuration docs/schema.md shows goft refusing. The
+// page quotes it as it is here, so the line numbers in the output match.
+const schemaSample = `# goft.yaml, with five mistakes
+jobs:
+  - name: invoice-upload
+    direction: send
+    local:
+      path: /data/out/invoice
+    remote:
+      protocol: sftp
+      host: invoice-sftp
+      path: /upload/invoice
+      port: "22"
+    include: "*.csv"
+    poll_interval: 5
+    post_acton: move
+    move_to: /data/done/invoice
+    log:
+      level: INFO
+`
+
+// TestGenerateSchemaSample writes what goft says about schemaSample, quoted in
+// docs/schema.md.
+func TestGenerateSchemaSample(t *testing.T) {
+	out := os.Getenv("GOFT_LOG_SAMPLE")
+	if out == "" {
+		t.Skip("set GOFT_LOG_SAMPLE to the output directory")
+	}
+	sampleLanguage(t)
+
+	cfg := filepath.Join(t.TempDir(), "goft.yaml")
+	if err := os.WriteFile(cfg, []byte(schemaSample), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stderr := captureFile(t, &os.Stderr, func() {
+		resetFlags()
+		rootCmd.SetArgs([]string{"jobs", "-c", cfg})
+		if code := Execute(); code != 2 {
+			t.Errorf("exit %d, want 2", code)
+		}
+	})
+	body := strings.ReplaceAll(stderr, cfg, "/etc/goft/goft.yaml")
+	if err := os.WriteFile(filepath.Join(out, "schema-errors.txt"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}

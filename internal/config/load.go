@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -25,9 +24,10 @@ const (
 // which deserves a better answer than "not a setting".
 var singleJobKeys = []string{"name", "local", "remote", "include", "exclude", "verify", "post_action"}
 
-// Load reads the configuration at path and every job file it names, replaces
-// ${NAME} in their values from the environment, and decodes the result. A
-// variable that is not set is an error. Validation is performed separately by
+// Load reads the configuration at path and every job file it names, checks
+// each file against the schema, replaces ${NAME} in their values from the
+// environment, and decodes the result. A variable that is not set is an
+// error. Validation of what the schema cannot see is performed separately by
 // [Validate].
 //
 // Relative paths on this machine are resolved against the directory of the
@@ -38,11 +38,8 @@ func Load(path string) (*Config, error) {
 	if err != nil {
 		return nil, i18n.Errorf("read config: %w", err)
 	}
-	tree, err := readTree(main)
+	tree, err := readFile(main, false)
 	if err != nil {
-		return nil, err
-	}
-	if err := checkTopLevel(main, tree); err != nil {
 		return nil, err
 	}
 
@@ -68,23 +65,9 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	for _, file := range files {
-		sub, err := readTree(file)
+		sub, err := readFile(file, true)
 		if err != nil {
 			return nil, err
-		}
-		if err := checkOldFormat(file, sub); err != nil {
-			return nil, err
-		}
-		var extra []string
-		for key := range sub {
-			if key != keyJobs {
-				extra = append(extra, key)
-			}
-		}
-		if len(extra) > 0 {
-			sort.Strings(extra)
-			return nil, i18n.Errorf("%s: a job file holds jobs and nothing else, but it sets %s",
-				file, strings.Join(extra, ", "))
 		}
 		jobs, err := decodeJobs(file, sub[keyJobs])
 		if err != nil {
@@ -96,43 +79,45 @@ func Load(path string) (*Config, error) {
 	return c, nil
 }
 
-// readTree parses one YAML file and expands the environment in its values.
-func readTree(path string) (map[string]any, error) {
+// readFile parses one file of the configuration, checks it against the
+// schema, and expands the environment in its values. Every way the file
+// breaks the schema is reported at once, each with its line.
+//
+// The schema sees the file as it is written, before the environment is
+// expanded, which is how an editor sees it too: a setting such as a port may
+// be written as ${NAME}, and its value is checked by [Validate] once it is
+// known.
+func readFile(path string, jobFile bool) (map[string]any, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, i18n.Errorf("read config: %w", err)
 	}
-	v := viper.New()
-	v.SetConfigType("yaml")
-	if err := v.ReadConfig(bytes.NewReader(raw)); err != nil {
+	doc, err := parseDocument(raw)
+	if err != nil {
 		return nil, i18n.Errorf("parse config %s: %w", path, err)
 	}
-	tree := v.AllSettings()
+	// A file in a shape goft no longer reads, or settings in a job file that
+	// belong in the main one, deserve a better answer than the schema's "not
+	// a setting".
+	if tree, ok := doc.value.(map[string]any); ok {
+		if err := checkOldFormat(path, tree); err != nil {
+			return nil, err
+		}
+		if jobFile {
+			if err := checkJobFile(path, tree); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if err := checkSchema(doc); err != nil {
+		return nil, i18n.Errorf("invalid configuration %s:\n%w", path, err)
+	}
+	// The schema has made sure the file is a section.
+	tree := doc.value.(map[string]any)
 	if err := expandEnv(tree); err != nil {
 		return nil, i18n.Errorf("config %s: %w", path, err)
 	}
 	return tree, nil
-}
-
-// checkTopLevel refuses keys the main file does not have, and says what to do
-// with a job file written before goft ran several jobs at once.
-func checkTopLevel(path string, tree map[string]any) error {
-	if err := checkOldFormat(path, tree); err != nil {
-		return err
-	}
-	var unknown []string
-	for key := range tree {
-		switch key {
-		case keyService, keyJobFiles, keyJobs:
-		default:
-			unknown = append(unknown, key)
-		}
-	}
-	if len(unknown) > 0 {
-		sort.Strings(unknown)
-		return i18n.Errorf("%s: %s is not a setting here (service | job_files | jobs)", path, strings.Join(unknown, ", "))
-	}
-	return nil
 }
 
 // checkOldFormat recognises a file written before goft ran several jobs at
@@ -147,15 +132,28 @@ func checkOldFormat(path string, tree map[string]any) error {
 	return nil
 }
 
-// decodeService reads the service section, defaults included.
+// checkJobFile refuses a job file that sets anything but jobs.
+func checkJobFile(path string, tree map[string]any) error {
+	var extra []string
+	for key := range tree {
+		if key != keyJobs {
+			extra = append(extra, key)
+		}
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		return i18n.Errorf("%s: a job file holds jobs and nothing else, but it sets %s",
+			path, strings.Join(extra, ", "))
+	}
+	return nil
+}
+
+// decodeService reads the service section, defaults included. The schema has
+// made sure it is a section, or left out.
 func decodeService(path string, raw any) (Service, error) {
 	v := viper.New()
 	serviceDefaults(v)
-	if raw != nil {
-		m, ok := raw.(map[string]any)
-		if !ok {
-			return Service{}, i18n.Errorf("%s: service is not a section of settings", path)
-		}
+	if m, ok := raw.(map[string]any); ok {
 		if err := v.MergeConfigMap(m); err != nil {
 			return Service{}, i18n.Errorf("decode config %s: %w", path, err)
 		}
@@ -168,24 +166,15 @@ func decodeService(path string, raw any) (Service, error) {
 }
 
 // decodeJobs reads a jobs list, filling in each job's defaults and resolving
-// its paths against the directory of the file it came from.
+// its paths against the directory of the file it came from. The schema has
+// made sure it is a list of sections, or left out.
 func decodeJobs(path string, raw any) ([]*Job, error) {
-	if raw == nil {
-		return nil, nil
-	}
-	items, ok := raw.([]any)
-	if !ok {
-		return nil, i18n.Errorf("%s: jobs is not a list", path)
-	}
+	items, _ := raw.([]any)
 	jobs := make([]*Job, 0, len(items))
-	for i, item := range items {
-		m, ok := item.(map[string]any)
-		if !ok {
-			return nil, i18n.Errorf("%s: item %d of jobs is not a job", path, i+1)
-		}
+	for _, item := range items {
 		v := viper.New()
 		jobDefaults(v)
-		if err := v.MergeConfigMap(m); err != nil {
+		if err := v.MergeConfigMap(item.(map[string]any)); err != nil {
 			return nil, i18n.Errorf("decode config %s: %w", path, err)
 		}
 		var j Job
@@ -205,22 +194,16 @@ func decodeJobs(path string, raw any) ([]*Job, error) {
 // in it yet is an ordinary state to be in — but a path written out in full
 // must exist, since naming a file that is not there is a mistake.
 func jobFiles(main string, raw any) ([]string, error) {
+	// The schema has made sure job_files is one name, a list of them, or
+	// left out.
 	var patterns []string
 	switch v := raw.(type) {
-	case nil:
-		return nil, nil
 	case string:
 		patterns = []string{v}
 	case []any:
 		for _, item := range v {
-			s, ok := item.(string)
-			if !ok {
-				return nil, i18n.Errorf("%s: job_files is a list of file names and patterns", main)
-			}
-			patterns = append(patterns, s)
+			patterns = append(patterns, item.(string))
 		}
-	default:
-		return nil, i18n.Errorf("%s: job_files is a list of file names and patterns", main)
 	}
 
 	base := filepath.Dir(main)

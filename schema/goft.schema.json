@@ -1,0 +1,666 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "goft configuration",
+  "description": "A goft configuration: the settings of the service itself and the jobs it runs. A job file named by job_files holds a jobs list and nothing else. goft checks every file against this schema when it starts, then checks what a schema cannot: that directories exist, and the jobs against each other.",
+  "type": "object",
+  "properties": {
+    "service": {
+      "description": "What belongs to the process rather than to any one job.",
+      "type": ["object", "null"],
+      "properties": {
+        "log": {
+          "$ref": "#/definitions/log"
+        },
+        "lock_dir": {
+          "description": "Holds a lock for each running job, so that the same job is never run by two processes at once. Defaults to goft\\locks under ProgramData on Windows, and elsewhere to /tmp/goft-<uid>, private to the account goft runs as.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "job_files": {
+      "description": "More jobs, from other files: each holds a jobs list and nothing else. A pattern may match nothing; a file named in full must exist. Relative names are resolved against the directory of this file.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "jobs": {
+      "description": "The jobs. Every job is checked at startup, alone and against the others, and one that is wrong stops goft starting at all.",
+      "type": ["array", "null"],
+      "items": {
+        "$ref": "#/definitions/job"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "env": {
+      "description": "A reference to an environment variable, ${NAME}, replaced with its value when goft reads the file. goft checks the value once it is replaced.",
+      "type": "string",
+      "pattern": "\\$\\{[A-Za-z_][A-Za-z0-9_]*\\}"
+    },
+    "duration": {
+      "description": "A length of time: a number with a unit, ns, us, ms, s, m or h, such as 30s, 5m or 1h30m. 0 needs no unit.",
+      "type": ["string", "integer"],
+      "pattern": "^[-+]?(0|(([0-9]+(\\.[0-9]*)?|\\.[0-9]+)(ns|us|µs|μs|ms|s|m|h))+)$",
+      "minimum": 0,
+      "maximum": 0
+    },
+    "job": {
+      "description": "One transfer: which files, between where and where, in which direction, and what happens to them afterwards.",
+      "type": "object",
+      "required": ["name", "direction", "local", "remote"],
+      "properties": {
+        "name": {
+          "description": "Identifies the job in every log record, on the command line and in its lock. Unique; names that differ only in case count as the same.",
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "description": "send moves files from local to remote, recv from remote to local.",
+          "anyOf": [
+            {
+              "enum": ["send", "recv"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "enabled": {
+          "description": "false leaves the job out of the service; --run-once can still run it.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "local": {
+          "description": "The local side of the transfer: the source for send and the destination for recv.",
+          "type": "object",
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "description": "The directory goft reads from or writes to. It must exist.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "remote": {
+          "$ref": "#/definitions/remote"
+        },
+        "recursive": {
+          "description": "true also descends into subdirectories, recreating the tree on the receiving side.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "include": {
+          "description": "Glob patterns matched against the file name: a file must match one of these.",
+          "default": ["*"],
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "exclude": {
+          "description": "Glob patterns matched against the file name: a file must match none of these. They also prune directories when recursive is set.",
+          "default": ["*.tmp", "*.part", ".*"],
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "max_file_size_mb": {
+          "description": "Files larger than this are skipped. 0 means no limit.",
+          "default": 0,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "poll_interval": {
+          "description": "The pause between cycles while running as a service.",
+          "default": "5s",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/duration"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "stable_duration": {
+          "description": "How long a file's size and modification time must stay unchanged before it counts as finished being written.",
+          "default": "3s",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/duration"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "workers": {
+          "description": "How many files are transferred at once, and so how many connections a cycle opens to each side.",
+          "default": 1,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "verify": {
+          "description": "How a transferred file is checked: hash compares xxHash after reading the file back from the destination, length compares sizes only, none accepts anything that did not fail.",
+          "default": "hash",
+          "anyOf": [
+            {
+              "enum": ["hash", "length", "none"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "on_exists": {
+          "description": "What to do about a destination file that is already there: skip leaves it alone, overwrite replaces it unless verify shows the two are already identical.",
+          "default": "skip",
+          "anyOf": [
+            {
+              "enum": ["skip", "overwrite"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "post_action": {
+          "description": "What becomes of the source file once it has arrived: none leaves it, delete removes it, move relocates it under move_to (send only).",
+          "default": "none",
+          "anyOf": [
+            {
+              "enum": ["none", "delete", "move"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "move_to": {
+          "description": "Where post_action: move puts the source file, keeping its relative path. It must not be inside local.path.",
+          "type": "string"
+        },
+        "remove_empty_dirs": {
+          "description": "Removes a subdirectory of the sending side once the transfer has taken the last file out of it. Needs post_action delete or move.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "retry": {
+          "description": "How a failed file is attempted again within the same cycle.",
+          "type": ["object", "null"],
+          "properties": {
+            "max_attempts": {
+              "description": "Counts the first try; 1 disables retrying.",
+              "default": 3,
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "$ref": "#/definitions/env"
+                }
+              ]
+            },
+            "interval": {
+              "description": "The wait before the first retry.",
+              "default": "2s",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/duration"
+                },
+                {
+                  "$ref": "#/definitions/env"
+                }
+              ]
+            },
+            "backoff": {
+              "description": "Multiplies the wait after each attempt; 1 keeps it constant.",
+              "default": 2,
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 1
+                },
+                {
+                  "$ref": "#/definitions/env"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "log": {
+          "$ref": "#/definitions/log"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["post_action"],
+            "properties": {
+              "post_action": {
+                "const": "move"
+              }
+            }
+          },
+          "then": {
+            "required": ["move_to"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "remote": {
+      "description": "The other side of the transfer: a server and how to reach it, or with protocol local a second directory on this machine. Anything left out may be filled in from the Windows Credential Manager, ~/.ssh/config (sftp) or ~/.netrc (ftp); what is set here always wins.",
+      "type": "object",
+      "required": ["protocol", "path"],
+      "properties": {
+        "protocol": {
+          "description": "ftp, sftp, smb, or local for a second directory on this machine.",
+          "anyOf": [
+            {
+              "enum": ["ftp", "sftp", "smb", "local"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "host": {
+          "description": "The server. For sftp it may be a ~/.ssh/config Host alias.",
+          "type": "string"
+        },
+        "port": {
+          "description": "Defaults to 21 for ftp, 22 for sftp and 445 for smb.",
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "path": {
+          "description": "The directory on the server. For smb it is relative to share and must not repeat it; for local it is a directory on this machine.",
+          "type": "string"
+        },
+        "user": {
+          "description": "The user to log in as.",
+          "type": "string"
+        },
+        "password": {
+          "description": "The password to log in with. ${NAME} keeps it out of this file.",
+          "type": "string"
+        },
+        "private_key": {
+          "description": "sftp: the key file, and the only key offered.",
+          "type": "string"
+        },
+        "private_key_passphrase": {
+          "description": "sftp: unlocks private_key. Not needed when ssh-agent holds the key.",
+          "type": "string"
+        },
+        "use_ssh_agent": {
+          "description": "sftp: false stops the ssh-agent being asked for keys.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "ssh_agent": {
+          "description": "sftp: the agent to ask, a Unix socket or on Windows a named pipe. Left out, it is found as ssh finds it.",
+          "type": "string"
+        },
+        "known_hosts": {
+          "description": "sftp: the known_hosts file that verifies the host key.",
+          "type": "string"
+        },
+        "insecure_skip_host_key_check": {
+          "description": "sftp: true connects without verifying the host key.",
+          "default": false,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "use_ssh_config": {
+          "description": "sftp: false stops ~/.ssh/config being read.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "ssh_config_file": {
+          "description": "sftp: read this file instead of the usual ssh_config search.",
+          "type": "string"
+        },
+        "use_netrc": {
+          "description": "ftp: false stops ~/.netrc being read.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "netrc_file": {
+          "description": "ftp: read this file instead of the usual netrc search.",
+          "type": "string"
+        },
+        "use_credential_manager": {
+          "description": "Windows: false stops the Credential Manager being read.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "credential_target": {
+          "description": "Windows: the Credential Manager entry to read instead of goft:<protocol>://<host>.",
+          "type": "string"
+        },
+        "share": {
+          "description": "smb: the share to mount. Do not repeat it in path.",
+          "type": "string"
+        },
+        "domain": {
+          "description": "smb: the NTLM domain.",
+          "type": "string"
+        },
+        "case_insensitive": {
+          "description": "Whether this side treats A.csv and a.csv as one name. Left out, goft decides: a directory on Windows or macOS and an SMB share do, an sftp or ftp server is taken not to.",
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "connect_timeout": {
+          "description": "How long opening a connection may take, from asking ssh-agent for keys through the login to mounting the share.",
+          "default": "30s",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/duration"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "io_timeout": {
+          "description": "How long an open connection may go without moving any data while something is waiting on it. It measures silence, not duration. 0 turns it off.",
+          "default": "5m",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/duration"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["protocol"],
+            "properties": {
+              "protocol": {
+                "enum": ["ftp", "sftp", "smb"]
+              }
+            }
+          },
+          "then": {
+            "required": ["host"]
+          }
+        },
+        {
+          "if": {
+            "required": ["protocol"],
+            "properties": {
+              "protocol": {
+                "const": "smb"
+              }
+            }
+          },
+          "then": {
+            "required": ["share"]
+          }
+        },
+        {
+          "if": {
+            "required": ["protocol"],
+            "properties": {
+              "protocol": {
+                "const": "local"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "host": false,
+              "port": false,
+              "user": false,
+              "password": false,
+              "share": false
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "log": {
+      "description": "Where the log goes, how much is written, and how the file is split up over time.",
+      "type": ["object", "null"],
+      "properties": {
+        "path": {
+          "description": "The log file. Left out, the log goes to stdout, or to stderr when the human readable console has stdout.",
+          "type": "string"
+        },
+        "level": {
+          "description": "Which records are written, and how much the console shows.",
+          "default": "info",
+          "anyOf": [
+            {
+              "enum": ["debug", "info", "warn", "warning", "error"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "fields": {
+          "description": "The parameters each transferred file is recorded with. Left out, all of them but rate_mibs, which joins them at debug level; named, exactly those.",
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "src",
+                      "dst",
+                      "protocol",
+                      "bytes",
+                      "duration_ms",
+                      "verify",
+                      "result",
+                      "reason",
+                      "error",
+                      "hash_src",
+                      "hash_dst",
+                      "attempt",
+                      "rate_mibs"
+                    ]
+                  },
+                  {
+                    "$ref": "#/definitions/env"
+                  }
+                ]
+              }
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "rotation": {
+          "description": "Splits the file by size, by day or by month.",
+          "default": "size",
+          "anyOf": [
+            {
+              "enum": ["size", "daily", "monthly"]
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "max_size_mb": {
+          "description": "Starts a new file once the current one grows past this many megabytes, whatever the rotation. 0 means 100.",
+          "default": 100,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "max_backups": {
+          "description": "How many old files are kept. 0 keeps them all.",
+          "default": 7,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "max_age_days": {
+          "description": "How many days old files are kept. 0 keeps them however old.",
+          "default": 30,
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        },
+        "compress": {
+          "description": "gzips the files that have been rotated away.",
+          "default": true,
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/env"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

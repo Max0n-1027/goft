@@ -23,10 +23,13 @@ moves files in, so the same file serves a watching service and a single run.
 	    post_action: move
 	    move_to: /data/done/invoice
 
-[Load] reads the main file and every job file it names, replaces ${NAME} in their
-values from the environment, fills in the defaults and resolves relative paths
-against the file each was written in. [Validate] then reports everything wrong
-with the result at once: each job on its own, and the jobs against each other.
+[Load] reads the main file and every job file it names, checks each against the
+JSON Schema in goft/schema, replaces ${NAME} in their values from the
+environment, fills in the defaults and resolves relative paths against the file
+each was written in. A file that breaks the schema is reported whole, every
+problem on its line. [Validate] then reports everything wrong with the result
+that a schema cannot see, all at once: values that came from the environment,
+directories that must exist, and the jobs against each other.
 Credentials are deliberately not checked here, because the Windows Credential
 Manager, ~/.netrc or ~/.ssh/config may still supply them.
 

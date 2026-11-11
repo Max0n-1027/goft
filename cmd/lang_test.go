@@ -122,7 +122,7 @@ func TestErrorsAreReportedInJapanese(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, _, stderr := run(t, "--lang", "ja", "--run-once", "job", "-c", cfg)
-	for _, want := range []string{"goft: 設定 " + cfg + " に誤りがあります:", "ジョブ job: remote.host は必須です", "ジョブ job: workers は 1 以上にしてください"} {
+	for _, want := range []string{"goft: 設定 " + cfg + " に誤りがあります:", "6 行目: ジョブ job: remote.protocol が ftp | sftp | smb のときは remote.host が必須です", "9 行目: ジョブ job: workers は 1 以上にしてください"} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("stderr does not contain %q:\n%s", want, stderr)
 		}

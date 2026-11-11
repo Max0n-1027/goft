@@ -1,6 +1,7 @@
 # goft ドキュメント
 
 - [複数のジョブをサービスとして動かす](service-ja.md) — 設定、コマンド、ロック、systemd と Windows サービス、1ファイル1ジョブの形式からの移行
+- [設定を JSON Schema で検証する](schema-ja.md) — エディタでの使い方、goft がいつ何を検証するか、v0.3 からの移行
 - [何が転送対象になるか](file-selection-ja.md) — 名前・安定化・サイズ上限で、周期がどのファイルを拾うか
 - [1ファイルが辿る道](transfer-lifecycle-ja.md) — 一時名・検証・本名への rename・転送後処理・再送
 - [ログを1行ずつ読む](log-example-ja.md) — 実際のログを、info と debug の両方でレコードごとに解説
