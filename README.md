@@ -11,6 +11,7 @@ goft -c goft.yaml                              # every enabled job, continuously
 goft -c goft.yaml --run-once invoice-upload    # one job, once
 goft -c goft.yaml jobs                         # list the jobs
 goft -c goft.yaml test                         # check the configuration and each connection
+goft schema > goft.schema.json                 # the JSON Schema of the configuration, for an editor
 ```
 
 Add `--dry-run` to list what would be transferred without touching the
@@ -86,6 +87,14 @@ mistake stops goft starting at all. Between jobs goft refuses a name used twice,
 two jobs taking from one directory when either deletes or moves what it sends,
 and jobs passing files round in a loop. See
 [Running several jobs as a service](docs/service.md#the-configuration).
+
+Before any of that, each file is checked against the configuration's
+[JSON Schema](docs/schema.md), which `goft schema` prints and an editor can
+check the file against as it is written. A setting goft does not have — a
+misspelt `post_acton`, or `Name` in capitals — a value of the wrong type, or a
+choice that does not exist is reported on its line, every one in the file at
+once, and stops goft starting. goft v0.3 ignored or converted some of these;
+[Upgrading from v0.3](docs/schema.md#upgrading-from-v03) lists them.
 
 ### Credentials
 
@@ -528,6 +537,7 @@ The pages under [docs/](docs/README.md) walk through the behaviour with output
 from real runs:
 
 - [Running several jobs as a service](docs/service.md) — the configuration, `--run-once`, locks, systemd and the Windows service, moving from one job per file
+- [Checking the configuration with JSON Schema](docs/schema.md) — the schema in an editor, what goft checks, upgrading from v0.3
 - [What gets transferred](docs/file-selection.md) — names, settling, the size cap
 - [Copying between two local directories](docs/local-copy.md) — `protocol: local`
 - [Authenticating with ssh-agent](docs/ssh-agent.md) — where the agent is found, which keys are offered, running as a service

@@ -9,6 +9,7 @@ goft -c goft.yaml                              # 有効なジョブをすべて�
 goft -c goft.yaml --run-once invoice-upload    # 1つのジョブを1回だけ実行
 goft -c goft.yaml jobs                         # ジョブの一覧
 goft -c goft.yaml test                         # 設定と各ジョブの接続の確認
+goft schema > goft.schema.json                 # エディタ用に設定の JSON Schema を出力
 ```
 
 `--dry-run` を付けると、転送先に一切触れずに転送対象の一覧だけを出します。対象は `--run-once` で指定したジョブ、指定がなければ有効なジョブすべてです。
@@ -66,6 +67,8 @@ jobs:
 このマシン上のパスは相対パスでも構いません。設定を読み込んだ時点で、そのパスが書かれているファイルのディレクトリを基準に一度だけ解決し、ログにはフルパスで記録します。
 
 起動時にはすべてのジョブを単独で、またジョブ同士で検査し、1つでも誤りがあれば goft はまったく起動しません。ジョブ同士では、名前の重複、どちらかが送ったファイルを削除・移動する2つのジョブが同じディレクトリから取ること、ファイルを循環させるジョブの組み合わせを拒否します。詳しくは [複数のジョブをサービスとして動かす](docs/service-ja.md#設定) を参照してください。
+
+その検査より前に、各ファイルを設定の [JSON Schema](docs/schema-ja.md) で検証します。このスキーマは `goft schema` で出力でき、エディタで書きながら同じ検証をすることもできます。goft にない設定（書き間違えた `post_acton` や、大文字の `Name`）、型の違う値、存在しない選択肢は、ファイル中のものをすべて行番号付きで報告し、goft は起動しません。goft v0.3 はこのうちいくつかを無視したり変換したりしていました。[v0.3 からの移行](docs/schema-ja.md#v03-からの移行) に一覧があります。
 
 ### 資格情報
 
@@ -271,6 +274,7 @@ jq -r 'select(.cycle_id == "6482c7d7-...")' goft.log
 [docs/](docs/README-ja.md) 以下のページでは、実際の実行結果を使って挙動を解説しています。
 
 - [複数のジョブをサービスとして動かす](docs/service-ja.md) — 設定・`--run-once`・ロック・systemd と Windows サービス・1ファイル1ジョブからの移行
+- [設定を JSON Schema で検証する](docs/schema-ja.md) — エディタでの使い方・goft が検証する内容・v0.3 からの移行
 - [何が転送対象になるか](docs/file-selection-ja.md) — 名前・安定化・サイズ上限
 - [ローカルのディレクトリ同士でコピーする](docs/local-copy-ja.md) — `protocol: local`
 - [ssh-agent で認証する](docs/ssh-agent-ja.md) — エージェントの探し方・出す鍵・サービスとして動かすとき

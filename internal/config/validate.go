@@ -263,6 +263,18 @@ func validateLog(l Log, key string, add addFunc) {
 			add(i18n.Errorf("%s.fields: %q is not a field (%s)", key, f, strings.Join(SelectableLogFields, " | ")))
 		}
 	}
+	for _, limit := range []struct {
+		name  string
+		value int
+	}{
+		{"max_size_mb", l.MaxSizeMB},
+		{"max_backups", l.MaxBackups},
+		{"max_age_days", l.MaxAgeDays},
+	} {
+		if limit.value < 0 {
+			add(i18n.Errorf("%s.%s must be >= 0", key, limit.name))
+		}
+	}
 }
 
 // Warnings returns non-fatal remarks about a job worth logging at startup.

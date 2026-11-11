@@ -86,24 +86,23 @@ func TestAnOldJobFileIsRecognised(t *testing.T) {
 
 func TestUnknownTopLevelKeysAreRefused(t *testing.T) {
 	main := writeFile(t, t.TempDir(), "goft.yaml", "job:\n"+sendJob("a", "/a"))
-	if _, err := Load(main); err == nil || !strings.Contains(err.Error(), "job is not a setting here") {
+	if _, err := Load(main); err == nil || !strings.Contains(err.Error(), "line 1: job is not a setting (did you mean jobs?)") {
 		t.Errorf("Load() = %v, want the misspelt key named", err)
 	}
 }
 
 func TestMalformedSectionsAreReported(t *testing.T) {
-	for name, body := range map[string]string{
-		"jobs not a list":      "jobs: x\n",
-		"job not a map":        "jobs:\n  - x\n",
-		"service not a map":    "service: x\njobs:\n" + sendJob("a", "/a"),
-		"job_files not a list": "job_files: {a: b}\n",
-		"job_files of numbers": "job_files: [1]\n",
+	for _, tc := range []struct{ body, want string }{
+		{"jobs: x\n", "line 1: jobs must be a list, not a string"},
+		{"jobs:\n  - x\n", "line 2: job #1 must be a section, not a string"},
+		{"service: x\njobs:\n" + sendJob("a", "/a"), "line 1: service must be a section, not a string"},
+		{"job_files: {a: b}\n", "line 1: job_files must be a string or a list, not a section"},
+		{"job_files: [1]\n", "line 1: job_files[0] must be a string, not a number: put the value in quotes"},
 	} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := Load(writeFile(t, t.TempDir(), "goft.yaml", body)); err == nil {
-				t.Error("Load() = nil, want the malformed section reported")
-			}
-		})
+		_, err := Load(writeFile(t, t.TempDir(), "goft.yaml", tc.body))
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("Load(%q) = %v, want %q", tc.body, err, tc.want)
+		}
 	}
 }
 

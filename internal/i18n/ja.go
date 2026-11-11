@@ -18,7 +18,16 @@ var japanese = map[string]string{
 	"override log.level of the service and every job (debug | info | warn | error)":                           "サービスと全ジョブの log.level を上書きする (debug | info | warn | error)",
 	"run the named job once and exit; repeat it to run several, one after another":                            "指定したジョブを1回だけ実行して終了する。繰り返し指定すると順に実行する",
 	"list what would be transferred without transferring anything; with no --run-once, for every enabled job": "転送はせずに、転送するファイルを一覧表示する。--run-once がなければ有効なジョブすべてが対象",
-	"List the jobs in the configuration":                                                                      "設定にあるジョブを一覧表示する",
+	"Print the JSON Schema of the configuration file":                                                         "設定ファイルの JSON Schema を出力する",
+	"Print the JSON Schema (draft-07) of the configuration file: the schema goft\n" +
+		"checks every file against when it starts. An editor that understands JSON\n" +
+		"Schema can check the configuration with it as it is written, and this one\n" +
+		"always matches the goft that printed it.\n\n" +
+		"  goft schema > goft.schema.json": "設定ファイルの JSON Schema（draft-07）を出力します。goft が起動時にすべてのファイルを\n" +
+		"検証するのと同じスキーマです。JSON Schema に対応したエディタで使うと、設定を書きながら\n" +
+		"検証できます。出力したスキーマは、それを出力した goft と必ず一致します。\n\n" +
+		"  goft schema > goft.schema.json",
+	"List the jobs in the configuration": "設定にあるジョブを一覧表示する",
 	"List the jobs in the configuration: each one's name, direction, whether the\n" +
 		"service runs it, how often it looks for files, and where it moves them from\n" +
 		"and to. The configuration is checked first, as the service would check it.": "設定にあるジョブを一覧表示します。名前・方向・サービスが動かすかどうか・ファイルを探す間隔・\n" +
@@ -218,16 +227,41 @@ var japanese = map[string]string{
 
 	// Reading and checking the configuration.
 	"%s is a job file from before goft ran several jobs at once: move its settings under jobs:, as one item with a name and a direction": "%s は、goft が複数のジョブを動かすようになる前の形式のジョブファイルです。設定を jobs: の下に、name と direction を持つ1つの項目として移してください",
-	"%s: %s is not a setting here (service | job_files | jobs)":                                                                          "%s: %s はここに書ける設定ではありません (service | job_files | jobs)",
-	"%s: service is not a section of settings":                                                                                           "%s: service は設定の項目のまとまりではありません",
-	"%s: jobs is not a list":                                     "%s: jobs が一覧になっていません",
-	"%s: item %d of jobs is not a job":                           "%s: jobs の %d 番目の項目はジョブではありません",
-	"%s: job_files is a list of file names and patterns":         "%s: job_files にはファイル名とパターンの一覧を書いてください",
-	"job_files %q: %w":                                           "job_files %q: %w",
-	"job_files: %w":                                              "job_files: %w",
+	"the configuration schema is broken: %w": "設定のスキーマが壊れています: %w",
+	"line %d: %w":                            "%d 行目: %w",
+	"the file":                               "ファイル全体",
+	"job %s":                                 "ジョブ %s",
+	"%s is not a setting":                    "%s という設定はありません",
+	"%s is not a setting (%s)":               "%s という設定はありません (%s)",
+	"%s is not a setting (did you mean %s?)": "%s という設定はありません（%s の書き間違いではありませんか？）",
+	"%s is required":                         "%s は必須です",
+	"%s is required when %s":                 "%[2]s のときは %[1]s が必須です",
+	"%s is not used when %s":                 "%[2]s のときは %[1]s を使いません",
+	"%s is %s":                               "%s が %s",
+	"%s must be %s, not %s":                  "%s は%sで書いてください（%sになっています）",
+	"%s must be %s, not %s: put the value in quotes":         "%s は%sで書いてください（%sになっています）。値を引用符で囲んでください",
+	"%s must be a duration such as 30s, 5m or 1h30m, not %s": "%s は 30s、5m、1h30m のような時間で書いてください（%s になっています）",
+	"%s is empty (%s)":      "%s が空です (%s)",
+	"%s %s is invalid (%s)": "%s %s は無効です (%s)",
+	"%s must be >= %s":      "%s は %s 以上にしてください",
+	"%s must be <= %s":      "%s は %s 以下にしてください",
+	"%s must not be empty":  "%s は空にできません",
+	"%s: %s":                "%s: %s",
+	"a section":             "セクション",
+	"a list":                "リスト",
+	"a string":              "文字列",
+	"an integer":            "整数",
+	"a number":              "数値",
+	"true or false":         "真偽値（true か false）",
+	"a boolean":             "真偽値",
+	"%s or %s":              "%sか%s",
+	"empty":                 "空",
+	"job_files %q: %w":      "job_files %q: %w",
+	"job_files: %w":         "job_files: %w",
 	"%s: a job file holds jobs and nothing else, but it sets %s": "%s: ジョブファイルに書けるのは jobs だけですが、%s が書かれています",
 	"%s.rotation %q is invalid (%s)":                             "%s.rotation %q は無効です (%s)",
 	"%s.level: %v":                                               "%s.level: %v",
+	"%s.%s must be >= 0":                                         "%s.%s は 0 以上にしてください",
 	"%s.fields: %q is not a field (%s)":                          "%s.fields: %q という項目はありません (%s)",
 	"no jobs are configured in %s":                               "%s にジョブが1つも設定されていません",
 	"job %s: %w":                                                 "ジョブ %s: %w",

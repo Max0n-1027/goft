@@ -107,6 +107,12 @@ jobs, goft refuses:
 A server is known by the name the configuration gives it, so one reached under
 two names — an ssh_config alias and its address — counts as two.
 
+Before any of this, every file is checked against the configuration's JSON
+Schema: a setting goft does not have, a value of the wrong type or a choice that
+does not exist is reported on its line. An editor can check the files against
+the same schema as they are written; see
+[Checking the configuration with JSON Schema](schema.md).
+
 ## Commands
 
 | Command | |
@@ -117,6 +123,7 @@ two names — an ssh_config alias and its address — counts as two.
 | `goft jobs` | Lists the jobs, after checking the configuration as the service would. |
 | `goft test [NAME...]` | Checks the configuration and each job's connection, in the direction the job runs. With no name, every enabled job. |
 | `goft service install` / `uninstall` | Windows only: registers goft as a Windows service, or removes it. See [below](#windows). |
+| `goft schema` | Prints the JSON Schema of the configuration, for an editor to check the files with. See [Checking the configuration with JSON Schema](schema.md). |
 
 `goft jobs` shows each job's direction, whether the service runs it, how often
 it looks for files, and where it moves them:
