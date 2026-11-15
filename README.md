@@ -511,13 +511,16 @@ Omit the key for every field but `rate_mibs`, which joins them at debug level.
 `time`, `level`, `msg`, `job`, `direction`, `event` and `cycle_id` are always
 written, since a record missing those cannot be placed.
 
-`cycle_id` is a fresh UUID for each pass over the sending side, shared by every
+`cycle_id` is a fresh ULID for each pass over the sending side, shared by every
 record that pass produced — the transfers, their retries and the summary — so
 one cycle can be picked out of a log a watcher has been appending to for days:
 
 ```bash
-jq -r 'select(.cycle_id == "6482c7d7-...")' goft.log
+jq -r 'select(.cycle_id == "01M61Q5MEW1GXNTGGTPZ35QTZK")' goft.log
 ```
+
+A ULID begins with the time the pass started, to the millisecond, so sorting by
+`cycle_id` puts the passes in the order they started.
 
 Startup and shutdown records carry no `cycle_id`, because they belong to the
 process rather than to any one pass. The field names are listed in

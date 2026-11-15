@@ -72,7 +72,7 @@ otherwise, which can be accurate only to the minute. Allow for that in
 At debug level the scan reports what it found and how much of it had settled:
 
 ```jsonl
-{"time":"2026-10-29T01:58:40.592979021+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"92731096-67a4-42c8-b935-29f994a8ad1d","event":"scan","found":4,"settled":4}
+{"time":"2026-10-29T01:58:40.592979021+09:00","level":"DEBUG","msg":"scan complete","job":"invoice-upload","direction":"send","cycle_id":"01M61Q662G74S8P4DCCF8W9KE2","event":"scan","found":4,"settled":4}
 ```
 
 ## 4. The size cap
@@ -81,7 +81,7 @@ At debug level the scan reports what it found and how much of it had settled:
 the cap is skipped, with the rest of the cycle carrying on:
 
 ```jsonl
-{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"ea701700-3c50-48d9-8cd1-f1b6ecabf70e","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
+{"time":"2026-10-29T01:58:22.556042322+09:00","level":"WARN","msg":"transfer","job":"invoice-upload","direction":"send","cycle_id":"01M61Q5MEW1GXNTGGTPZ35QTZK","event":"transfer","src":"/data/out/invoice/archive.dat","dst":"sftp://invoice-sftp/upload/invoice/archive.dat","protocol":"sftp","bytes":2097152,"duration_ms":0,"verify":"hash","result":"skipped","reason":"size_limit"}
 ```
 
 The warning is written once per file per process; later cycles record the same

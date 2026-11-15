@@ -22,7 +22,9 @@
 The examples on these pages are captured from real runs by the tests in
 [cmd/logsample_test.go](https://github.com/Max0n-1027/goft/blob/main/cmd/logsample_test.go), which start a real sftp
 server for them to talk to; only paths, the host, the port and the user name are
-rewritten. The one exception is the run stopped part way in
+rewritten, and `cycle_id`: these runs were made while it was still a UUID, so
+each is replaced with a ULID of the time its cycle started. The one exception
+is the run stopped part way in
 [What a run looks like on screen](console-output.md#stopping-part-way), which
 was stopped by hand.
 

@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"github.com/oklog/ulid/v2"
 	"golang.org/x/sync/errgroup"
 
 	"goft/internal/config"
@@ -177,6 +177,17 @@ func (e *Engine) cycleWait(failures int) time.Duration {
 	return wait
 }
 
+// newCycleID names a cycle that started at start.
+//
+// It is a ULID: 26 characters that begin with the time the cycle started, to
+// the millisecond, followed by randomness. Sorting cycle ids therefore sorts
+// the cycles by when they started — within one process strictly, even for
+// cycles of several jobs started in the same millisecond — and the time can
+// be read back from the id alone.
+func newCycleID(start time.Time) string {
+	return ulid.MustNewDefault(start).String()
+}
+
 // RunOnce performs a single cycle.
 //
 // Every record the cycle produces carries a fresh cycle id, so that one pass
@@ -184,7 +195,7 @@ func (e *Engine) cycleWait(failures int) time.Duration {
 // days.
 func (e *Engine) RunOnce(ctx context.Context) (Summary, error) {
 	start := e.now()
-	e.log = e.base.With(logging.KeyCycleID, uuid.NewString())
+	e.log = e.base.With(logging.KeyCycleID, newCycleID(start))
 
 	src, err := e.opts.NewSrc(ctx)
 	if err != nil {

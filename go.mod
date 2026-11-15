@@ -7,9 +7,9 @@ require (
 	github.com/cloudsoda/go-smb2 v0.0.0-20260803221621-0b399b9d036c
 	github.com/danieljoos/wincred v1.2.3
 	github.com/fclairamb/ftpserverlib v0.32.3
-	github.com/google/uuid v1.6.0
 	github.com/jlaffaye/ftp v0.2.2
 	github.com/kevinburke/ssh_config v1.6.0
+	github.com/oklog/ulid/v2 v2.1.2
 	github.com/pkg/sftp v1.13.11
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/afero v1.15.0
