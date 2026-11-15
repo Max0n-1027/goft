@@ -33,7 +33,7 @@ goft invoice-archive  /data/out/invoice -> /backup/invoice  （2 件、830.1 KiB
 ヘッダーには URL ではなく2つのパスがそのまま並びます。ログでも同じです。
 
 ```jsonl
-{"time":"2026-10-29T01:58:56.097620921+09:00","level":"INFO","msg":"transfer","job":"invoice-archive","direction":"send","cycle_id":"e593cad5-697e-4bc4-9a97-f8641b824bd3","event":"transfer","src":"/data/out/invoice/2026-08/invoice_202608_02.csv","dst":"/backup/invoice/2026-08/invoice_202608_02.csv","protocol":"local","bytes":16,"duration_ms":0,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
+{"time":"2026-10-29T01:58:56.097620921+09:00","level":"INFO","msg":"transfer","job":"invoice-archive","direction":"send","cycle_id":"01M61Q6N71748RWPNTFJ043H9T","event":"transfer","src":"/data/out/invoice/2026-08/invoice_202608_02.csv","dst":"/backup/invoice/2026-08/invoice_202608_02.csv","protocol":"local","bytes":16,"duration_ms":0,"verify":"hash","result":"success","hash_src":"d5f6162fd32742a1","hash_dst":"d5f6162fd32742a1"}
 ```
 
 `protocol` は `local` として記録され、`src` と `dst` には両方のファイル名が省略なしで入ります。

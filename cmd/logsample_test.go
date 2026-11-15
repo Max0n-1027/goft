@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/oklog/ulid/v2"
 	"golang.org/x/crypto/ssh"
 
 	"goft/internal/console"
@@ -742,5 +744,44 @@ func TestGenerateSchemaSample(t *testing.T) {
 	body := strings.ReplaceAll(stderr, cfg, "/etc/goft/goft.yaml")
 	if err := os.WriteFile(filepath.Join(out, "schema-errors.txt"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestDocumentedCycleIDsAreULIDsOfTheirCycle checks the cycle_id of every log
+// record the pages under docs quote: a ULID whose time is when its cycle
+// started, so no later than any record it carries, and not long before.
+func TestDocumentedCycleIDsAreULIDsOfTheirCycle(t *testing.T) {
+	pages, err := filepath.Glob(filepath.Join("..", "docs", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, page := range pages {
+		raw, err := os.ReadFile(page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(raw), "\n") {
+			var r struct {
+				Time    time.Time `json:"time"`
+				CycleID string    `json:"cycle_id"`
+			}
+			if !strings.HasPrefix(line, "{") || json.Unmarshal([]byte(line), &r) != nil || r.CycleID == "" {
+				continue
+			}
+			checked++
+			id, err := ulid.ParseStrict(r.CycleID)
+			if err != nil {
+				t.Errorf("%s:%d: cycle_id %q is not a ULID: %v", page, i+1, r.CycleID, err)
+				continue
+			}
+			if started := id.Timestamp(); started.After(r.Time) || r.Time.Sub(started) > time.Minute {
+				t.Errorf("%s:%d: cycle_id %s says its cycle started at %v, which does not fit a record at %v",
+					page, i+1, r.CycleID, started, r.Time)
+			}
+		}
+	}
+	if checked < 50 {
+		t.Errorf("checked only %d records; the search is not finding them", checked)
 	}
 }

@@ -220,9 +220,10 @@ jobs:
       #                set at debug level
       #
       # time, level, msg, job, direction, event and cycle_id are always written: a
-      # record missing those cannot be placed. cycle_id is a fresh UUID for each
+      # record missing those cannot be placed. cycle_id is a fresh ULID for each
       # pass over the sending side, so the records one pass produced can be picked
-      # out of a log a watching process has been appending to for days.
+      # out of a log a watching process has been appending to for days. It begins
+      # with the time the pass started, so sorting by it sorts the passes.
       # fields: [src, dst, result, error, hash_src, hash_dst]
       max_size_mb: 100
       # Old generations beyond these limits are deleted. Only this job's own files

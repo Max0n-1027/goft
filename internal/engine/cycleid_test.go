@@ -5,14 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/oklog/ulid/v2"
 
 	"goft/internal/fsys"
 )
 
-// cycleRecords runs n cycles and returns every record they produced.
-func cycleRecords(t *testing.T, h *harness, n int) []map[string]any {
+// cycleRecords runs n cycles and returns every record they produced. now is
+// the engine's clock, or nil for the real one.
+func cycleRecords(t *testing.T, h *harness, n int, now func() time.Time) []map[string]any {
 	t.Helper()
 	var buf bytes.Buffer
 	e := New(Options{
@@ -21,6 +26,7 @@ func cycleRecords(t *testing.T, h *harness, n int) []map[string]any {
 		NewDst: func(context.Context) (fsys.FS, error) { return h.dst, nil },
 		Logger: slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Single: true,
+		Now:    now,
 	})
 	for i := 0; i < n; i++ {
 		if _, err := e.RunOnce(context.Background()); err != nil {
@@ -48,7 +54,7 @@ func TestEveryRecordInACycleSharesOneID(t *testing.T) {
 		h.write(h.srcDir, n+".csv", n)
 	}
 
-	records := cycleRecords(t, h, 1)
+	records := cycleRecords(t, h, 1, nil)
 	if len(records) < 4 {
 		t.Fatalf("only %d records; expected a scan, three transfers and a summary", len(records))
 	}
@@ -74,7 +80,7 @@ func TestEachCycleGetsItsOwnID(t *testing.T) {
 	// Three passes over the same directory. Without a per-cycle id, the records
 	// of a watcher running for days would be one undifferentiated stream.
 	ids := map[string]bool{}
-	for _, r := range cycleRecords(t, h, 3) {
+	for _, r := range cycleRecords(t, h, 3, nil) {
 		if id, ok := r["cycle_id"].(string); ok {
 			ids[id] = true
 		}
@@ -84,16 +90,47 @@ func TestEachCycleGetsItsOwnID(t *testing.T) {
 	}
 }
 
-func TestCycleIDLooksLikeAUUID(t *testing.T) {
+func TestCycleIDIsAULIDOfWhenTheCycleStarted(t *testing.T) {
 	h := newHarness(t)
 	h.write(h.srcDir, "a.csv", "hello")
+	start := time.Date(2026, 11, 15, 9, 30, 12, 345678901, time.Local)
 
-	id, _ := cycleRecords(t, h, 1)[0]["cycle_id"].(string)
-	if len(id) != 36 || strings.Count(id, "-") != 4 {
-		t.Errorf("cycle_id = %q, want a 36 character UUID", id)
+	raw, _ := cycleRecords(t, h, 1, func() time.Time { return start })[0]["cycle_id"].(string)
+	id, err := ulid.ParseStrict(raw)
+	if err != nil {
+		t.Fatalf("cycle_id = %q, want a ULID: %v", raw, err)
 	}
-	if id[14] != '4' {
-		t.Errorf("cycle_id = %q, want version 4", id)
+	if raw != id.String() {
+		t.Errorf("cycle_id = %q, want it written as a ULID is, %q", raw, id.String())
+	}
+	if want := start.Truncate(time.Millisecond); !id.Timestamp().Equal(want) {
+		t.Errorf("cycle_id %s says the cycle started at %v, want %v", raw, id.Timestamp(), want)
+	}
+}
+
+// TestCycleIDsSortInTheOrderTheCyclesStarted holds even for cycles started in
+// the same millisecond, which a clock that stands still makes every cycle.
+func TestCycleIDsSortInTheOrderTheCyclesStarted(t *testing.T) {
+	h := newHarness(t)
+	h.write(h.srcDir, "a.csv", "hello")
+	still := time.Now()
+
+	for name, now := range map[string]func() time.Time{
+		"real clock":      nil,
+		"one millisecond": func() time.Time { return still },
+	} {
+		var ids []string
+		for _, r := range cycleRecords(t, h, 5, now) {
+			if id, _ := r["cycle_id"].(string); len(ids) == 0 || ids[len(ids)-1] != id {
+				ids = append(ids, id)
+			}
+		}
+		if len(ids) != 5 {
+			t.Fatalf("%s: five cycles produced %d ids", name, len(ids))
+		}
+		if !slices.IsSorted(ids) || len(slices.Compact(slices.Clone(ids))) != 5 {
+			t.Errorf("%s: cycle ids in the order the cycles ran: %v, want them strictly increasing", name, ids)
+		}
 	}
 }
 
@@ -102,7 +139,7 @@ func TestAFailedCycleStillCarriesItsID(t *testing.T) {
 	h.write(h.srcDir, "a.csv", "hello")
 	h.dst.FailOp(fsys.OpWrite, errStr("disk full"))
 
-	records := cycleRecords(t, h, 1)
+	records := cycleRecords(t, h, 1, nil)
 	var failure map[string]any
 	for _, r := range records {
 		if r["result"] == "failed" {
