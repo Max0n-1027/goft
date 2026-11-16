@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/config"
-	"goft/internal/ftptest"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/ftptest"
 )
 
 func TestFTPConformance(t *testing.T) {

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 func TestDecodeSecretHandlesBothEncodings(t *testing.T) {

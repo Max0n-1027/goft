@@ -19,9 +19,9 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"goft/internal/config"
-	"goft/internal/i18n"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 func newKey(t *testing.T) (ed25519.PrivateKey, ssh.PublicKey) {

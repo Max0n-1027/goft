@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // File is one transfer candidate, addressed relative to the sending root.

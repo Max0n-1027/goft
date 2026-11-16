@@ -11,8 +11,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
-	"goft/internal/config"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // SourceEnv marks a connection parameter taken from an environment variable,

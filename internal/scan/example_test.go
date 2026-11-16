@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"goft/internal/scan"
+	"github.com/Max0n-1027/goft/internal/scan"
 )
 
 // A file is only handed on once it has stopped changing, which is what keeps a

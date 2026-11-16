@@ -6,7 +6,7 @@ import (
 
 	"github.com/danieljoos/wincred"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // SourceCredentialManager marks a value that came from the Windows Credential

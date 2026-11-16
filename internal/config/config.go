@@ -24,9 +24,9 @@ moves files in, so the same file serves a watching service and a single run.
 	    move_to: /data/done/invoice
 
 [Load] reads the main file and every job file it names, checks each against the
-JSON Schema in goft/schema, replaces ${NAME} in their values from the
-environment, fills in the defaults and resolves relative paths against the file
-each was written in. A file that breaks the schema is reported whole, every
+JSON Schema in [github.com/Max0n-1027/goft/schema], replaces ${NAME} in their
+values from the environment, fills in the defaults and resolves relative paths
+against the file each was written in. A file that breaks the schema is reported whole, every
 problem on its line. [Validate] then reports everything wrong with the result
 that a schema cannot see, all at once: values that came from the environment,
 directories that must exist, and the jobs against each other.

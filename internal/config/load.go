@@ -9,7 +9,7 @@ import (
 
 	"github.com/spf13/viper"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // Top-level keys of the main file, and the one key a job file may set.

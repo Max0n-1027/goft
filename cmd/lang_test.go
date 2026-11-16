@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // captureFile runs fn with *target (os.Stdout or os.Stderr) going to a pipe,

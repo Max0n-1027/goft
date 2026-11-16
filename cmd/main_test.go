@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // TestMain keeps the environment of whoever runs the tests out of them.

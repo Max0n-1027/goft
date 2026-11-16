@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goft/internal/config"
-	"goft/internal/console"
-	"goft/internal/fsys"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/console"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 var testCmd = &cobra.Command{

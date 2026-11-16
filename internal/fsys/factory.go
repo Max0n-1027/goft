@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // NewRemote opens a connection to the configured remote side. For protocol

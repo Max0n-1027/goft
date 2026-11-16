@@ -11,9 +11,9 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // Format renders a hash the way it appears in logs.

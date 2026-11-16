@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // destIndex is a snapshot of the destination directories a cycle will write to.

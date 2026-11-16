@@ -12,12 +12,12 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
-	"goft/internal/i18n"
-	"goft/internal/logging"
-	"goft/internal/postact"
-	"goft/internal/verify"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/logging"
+	"github.com/Max0n-1027/goft/internal/postact"
+	"github.com/Max0n-1027/goft/internal/verify"
 )
 
 // attempt transfers one file, trying again when the failure looks like

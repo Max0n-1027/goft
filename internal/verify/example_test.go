@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"goft/internal/verify"
+	"github.com/Max0n-1027/goft/internal/verify"
 )
 
 // Hashing a stream is how goft records what it sent: the same digest is

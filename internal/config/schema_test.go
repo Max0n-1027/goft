@@ -16,7 +16,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 	"github.com/spf13/viper"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // schemaDoc returns the schema document, compiled as goft compiles it.

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/nettest"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/nettest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 // scenario is one end-to-end setup: a local directory, a live sftp server and

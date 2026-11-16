@@ -312,13 +312,13 @@ build/darwin/arm64/goft
 VERSION=v1.0.0 ./build.sh linux/amd64 windows/amd64
 ```
 
-埋め込まれた内容は `goft version` で確認できます。`SOURCE_DATE_EPOCH` を設定すると再現可能なビルドになります。手元で1つ作るだけなら `go build .` でも構いません。
+埋め込まれた内容は `goft version` で確認できます。`SOURCE_DATE_EPOCH` を設定すると再現可能なビルドになります。手元で1つ作るだけなら `go build .` でも構いません。その場合の `goft version` には、Go が git から記録したバージョンとコミットが表示され、ビルド日時は表示されません。
 
 ### リリース
 
 ビルド済みのバイナリは [リリースページ](https://github.com/Max0n-1027/goft/releases) で公開しています。`v*` タグごとのバージョン付きリリースと、`main` への push ごとに作られる `main-<日付>-<コミット>` という名前のプレリリースの2種類です。後者はリリースではなくビルドで、サポート対象ではなく、次のコミットで置き換わります。残すのは最新5件だけです。
 
-各アーカイブには実行ファイル・両方の README と、そこからリンクしている `docs/` のページ・ライセンス・設定例が入っており、`SHA256SUMS` で照合できます。
+各アーカイブには実行ファイル・両方の README と、そこからリンクしている `docs/` のページ・ライセンス・設定例・JSON Schema（`schema/goft.schema.json`）が入っており、`SHA256SUMS` で照合できます。
 
 ```bash
 version=v0.2.2    # ダウンロードしたリリース
@@ -332,3 +332,13 @@ sha256sum -c SHA256SUMS --ignore-missing
 ```bash
 VERSION=v1.0.0 ./package.sh
 ```
+
+### go install でのインストール
+
+Go 1.25 以降があれば、ソースからのビルドとインストールを1回で行えます。
+
+```bash
+go install github.com/Max0n-1027/goft@latest
+```
+
+実行ファイルは `$(go env GOPATH)/bin`（`GOBIN` を設定していればそこ）に置かれます。インストールされるのは実行ファイルだけです。JSON Schema は `goft schema` で出力でき、設定例とドキュメントはリポジトリと各リリースのアーカイブにあります。`goft version` には取得したリリースのバージョンが表示され、コミットとビルド日時は表示されません（`go install` はこれらを記録しないため）。v0.4.1 までのリリースは、モジュール名が `github.com/Max0n-1027/goft` ではなく `goft` だったため、この方法ではインストールできません。

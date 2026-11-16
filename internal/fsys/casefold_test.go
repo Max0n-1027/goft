@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goft/internal/config"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 func boolPtr(b bool) *bool { return &b }

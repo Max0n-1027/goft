@@ -12,10 +12,10 @@ import (
 	"github.com/oklog/ulid/v2"
 	"golang.org/x/sync/errgroup"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
-	"goft/internal/logging"
-	"goft/internal/scan"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/logging"
+	"github.com/Max0n-1027/goft/internal/scan"
 )
 
 // Options wires an engine to a job and its outputs.

@@ -5,9 +5,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goft/internal/config"
-	"goft/internal/console"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/console"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 var jobsCmd = &cobra.Command{

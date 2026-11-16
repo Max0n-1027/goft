@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/sys/windows"
 
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 func TestIsPipe(t *testing.T) {

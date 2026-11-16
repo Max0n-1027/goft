@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/ftptest"
-	"goft/internal/nettest"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/ftptest"
+	"github.com/Max0n-1027/goft/internal/nettest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 const stallLimit = 500 * time.Millisecond

@@ -1,4 +1,4 @@
-module goft
+module github.com/Max0n-1027/goft
 
 go 1.25.0
 

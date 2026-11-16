@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // The POSIX form of this is TestResolveFTPWarnsAboutLoosePermissions, which

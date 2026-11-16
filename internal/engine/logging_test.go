@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // runAtLevel performs one cycle with the logger set to level and returns the

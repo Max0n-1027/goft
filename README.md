@@ -578,7 +578,9 @@ VERSION=v1.0.0 ./build.sh linux/amd64 windows/amd64
 ```
 
 `goft version` reports what was stamped. Setting `SOURCE_DATE_EPOCH` makes the
-build reproducible. For a plain local build, `go build .` still works.
+build reproducible. For a plain local build, `go build .` still works; its
+`goft version` reports the version and commit Go recorded from git, and no
+build date.
 
 ### Releases
 
@@ -589,8 +591,8 @@ than releases — unsupported, superseded by the next commit — and only the fi
 most recent are kept.
 
 Each archive holds the binary, both READMEs and the pages under `docs/` they
-link to, the licence and the example configuration, and `SHA256SUMS` covers them
-all:
+link to, the licence, the example configuration and the JSON Schema
+(`schema/goft.schema.json`), and `SHA256SUMS` covers them all:
 
 ```bash
 version=v0.2.2    # the release you downloaded
@@ -607,3 +609,19 @@ hand:
 ```bash
 VERSION=v1.0.0 ./package.sh
 ```
+
+### Installing with go install
+
+With Go 1.25 or later, goft can be built from source and installed in one step:
+
+```bash
+go install github.com/Max0n-1027/goft@latest
+```
+
+The binary goes to `$(go env GOPATH)/bin`, or to `GOBIN` if it is set. Only the
+binary is installed: `goft schema` prints the JSON Schema, and the example
+configuration and the documentation are in the repository and in every release
+archive. `goft version` reports the release that was fetched and no commit or
+build date, which `go install` does not record. Releases up to v0.4.1 cannot be
+installed this way, since their module was named `goft` rather than
+`github.com/Max0n-1027/goft`.

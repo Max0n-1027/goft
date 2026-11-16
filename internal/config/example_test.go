@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // The wait between attempts grows, so a server that needs a moment to come back

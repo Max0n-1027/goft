@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/ftptest"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/ftptest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 // silentServer accepts connections and never says a word: the shape of a

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 func TestSFTPConformance(t *testing.T) {

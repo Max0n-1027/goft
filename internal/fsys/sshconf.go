@@ -13,8 +13,8 @@ import (
 	"github.com/kevinburke/ssh_config"
 	"golang.org/x/crypto/ssh"
 
-	"goft/internal/config"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // sshLookup abstracts over the two ways ssh_config can be consulted: the

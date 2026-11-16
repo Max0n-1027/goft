@@ -5,7 +5,7 @@ package scan
 import (
 	"path"
 
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // Filter decides which names take part in a transfer.

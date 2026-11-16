@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/engine"
-	"goft/internal/i18n"
-	"goft/internal/scan"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/engine"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/scan"
 )
 
 func newJapaneseConsole(buf *bytes.Buffer, level slog.Level) *Console {

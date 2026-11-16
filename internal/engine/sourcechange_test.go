@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // appendOnOpen appends to a file on the sending side whenever the wrapped FS

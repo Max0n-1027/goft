@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"goft/cmd"
+	"github.com/Max0n-1027/goft/cmd"
 )
 
 func main() { os.Exit(cmd.Execute()) }

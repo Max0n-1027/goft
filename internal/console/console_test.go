@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/engine"
-	"goft/internal/scan"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/engine"
+	"github.com/Max0n-1027/goft/internal/scan"
 )
 
 func newTestConsole(buf *bytes.Buffer, level slog.Level, dir config.Direction) *Console {

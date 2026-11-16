@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 func TestASendAuthenticatedByTheAgentAlone(t *testing.T) {

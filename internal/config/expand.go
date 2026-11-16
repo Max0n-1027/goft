@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // variable matches a reference to the environment: ${NAME}, and nothing else.
