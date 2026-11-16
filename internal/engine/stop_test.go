@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // holdWrite makes the destination's first Write wait until released, and says

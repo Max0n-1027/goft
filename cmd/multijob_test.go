@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/lock"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/lock"
 )
 
 // fleet is a configuration of three jobs copying between directories on this

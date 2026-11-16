@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // Layouts used for date based rotation. Free-form layouts are deliberately not

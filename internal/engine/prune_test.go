@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // newPruning is a harness that empties the source as it goes and removes the

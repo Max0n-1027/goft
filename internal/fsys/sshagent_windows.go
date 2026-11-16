@@ -8,7 +8,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // defaultAgent is where to look for an ssh-agent when nothing names one: the

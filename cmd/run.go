@@ -11,13 +11,13 @@ import (
 
 	"golang.org/x/term"
 
-	"goft/internal/config"
-	"goft/internal/console"
-	"goft/internal/engine"
-	"goft/internal/fsys"
-	"goft/internal/i18n"
-	"goft/internal/lock"
-	"goft/internal/logging"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/console"
+	"github.com/Max0n-1027/goft/internal/engine"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/lock"
+	"github.com/Max0n-1027/goft/internal/logging"
 )
 
 // signalContext cancels on Ctrl+C and on SIGTERM.

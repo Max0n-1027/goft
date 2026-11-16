@@ -9,10 +9,10 @@ import (
 	"strings"
 	"sync"
 
-	"goft/internal/config"
-	"goft/internal/engine"
-	"goft/internal/i18n"
-	"goft/internal/verify"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/engine"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/verify"
 )
 
 // Console renders transfer progress for a person rather than for a log parser.

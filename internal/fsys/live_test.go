@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"testing"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // liveRemote builds a remote configuration from the environment, or skips.

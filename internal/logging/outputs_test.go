@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // sized is a log section with the defaults a configuration gets: one file,

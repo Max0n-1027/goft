@@ -7,7 +7,7 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 var errWouldBlock = windows.ERROR_LOCK_VIOLATION

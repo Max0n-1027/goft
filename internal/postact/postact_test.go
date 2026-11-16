@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 func seed(t *testing.T, name, body string) (*fsys.Local, string) {

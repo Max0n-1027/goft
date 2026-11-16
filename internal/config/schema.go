@@ -15,8 +15,8 @@ import (
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
 
-	"goft/internal/i18n"
-	"goft/schema"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/schema"
 )
 
 // schemaURL is the name the schema is compiled under. Nothing is fetched from

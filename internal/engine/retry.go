@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"net/textproto"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // ErrSourceChanged reports a source file that changed between settling and the

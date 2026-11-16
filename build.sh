@@ -81,12 +81,17 @@ main() {
     local version commit built
     { read -r version; read -r commit; read -r built; } < <(stamp)
 
+    # -X names the variables by their full import path, so it is read from
+    # go.mod rather than written out a second time here.
+    local pkg
+    pkg="$(go list -m)/cmd"
+
     # -s -w drop the symbol table and DWARF; -trimpath keeps local paths out of
     # the binary, which also makes the build reproducible.
     local ldflags="-s -w"
-    ldflags+=" -X ${BINARY}/cmd.version=${version}"
-    ldflags+=" -X ${BINARY}/cmd.commit=${commit}"
-    ldflags+=" -X ${BINARY}/cmd.date=${built}"
+    ldflags+=" -X ${pkg}.version=${version}"
+    ldflags+=" -X ${pkg}.commit=${commit}"
+    ldflags+=" -X ${pkg}.date=${built}"
     ldflags+=" ${LDFLAGS:-}"
 
     printf 'goft %s (commit %s, built %s)\n\n' "$version" "$commit" "$built"

@@ -20,9 +20,9 @@ import (
 	"github.com/oklog/ulid/v2"
 	"golang.org/x/crypto/ssh"
 
-	"goft/internal/console"
-	"goft/internal/i18n"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/console"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 // sampleLanguage puts the console samples into the language GOFT_SAMPLE_LANG

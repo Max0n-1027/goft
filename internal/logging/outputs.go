@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // Outputs opens the places logs are written to — files, stdout, stderr — each

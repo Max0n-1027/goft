@@ -30,8 +30,8 @@ import (
 	"sync"
 	"time"
 
-	"goft/internal/fsys"
-	"goft/internal/scan"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/scan"
 )
 
 // Outcome is what happened to one file.

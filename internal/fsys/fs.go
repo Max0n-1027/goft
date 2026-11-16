@@ -34,7 +34,7 @@ import (
 	"strings"
 	"time"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // FileInfo is the subset of stat information goft relies on.

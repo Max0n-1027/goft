@@ -8,16 +8,16 @@ import (
 	"os"
 	"path/filepath"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // Apply runs the configured action against a file that has just been
 // transferred. name is relative to the sending root.
 //
 // move is only reachable for send, where the sending side is always local;
-// [goft/internal/config.ValidateForDirection] rejects it for recv.
+// [config.ValidateForDirection] rejects it for recv.
 func Apply(ctx context.Context, action config.PostAction, src fsys.FS, name, moveTo string) error {
 	switch action {
 	case config.PostNone, "":

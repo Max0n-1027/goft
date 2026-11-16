@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"goft/internal/ftptest"
-	"goft/internal/sftptest"
+	"github.com/Max0n-1027/goft/internal/ftptest"
+	"github.com/Max0n-1027/goft/internal/sftptest"
 )
 
 // checkCreatesMissingRoot asserts that an FS rooted at a directory that does

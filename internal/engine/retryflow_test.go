@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // withRetry turns retrying on for a harness, with no waiting so the tests stay

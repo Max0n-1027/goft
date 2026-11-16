@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 // writeKey writes a new ed25519 private key, encrypted when passphrase is set.

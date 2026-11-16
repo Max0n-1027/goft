@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // slowMkdir makes directory creation take long enough for a second worker to

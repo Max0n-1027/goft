@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"goft/internal/config"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // netrcEntry is one machine block from a .netrc file.

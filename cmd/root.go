@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goft/internal/config"
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 var (

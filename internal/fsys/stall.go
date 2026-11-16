@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // aborter is implemented by file systems that can drop their connection at

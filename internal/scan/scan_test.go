@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 func write(t *testing.T, dir, name, body string) {

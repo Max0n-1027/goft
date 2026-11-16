@@ -4,7 +4,7 @@ import (
 	"io/fs"
 	"strings"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // windowsDeviceNames are the names Windows reserves for devices. The name is

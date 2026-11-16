@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"goft/schema"
+	"github.com/Max0n-1027/goft/schema"
 )
 
 func TestSchemaPrintsTheSchemaGoftChecksWith(t *testing.T) {

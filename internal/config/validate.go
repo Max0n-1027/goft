@@ -8,7 +8,7 @@ import (
 	"strings"
 	"unicode"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // Direction is the way a job moves files: send, from the local side to the

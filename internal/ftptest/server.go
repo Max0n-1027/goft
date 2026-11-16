@@ -24,7 +24,7 @@ import (
 	ftpserver "github.com/fclairamb/ftpserverlib"
 	"github.com/spf13/afero"
 
-	"goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/config"
 )
 
 const (

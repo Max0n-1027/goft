@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"goft/internal/config"
-	"goft/internal/fsys"
+	"github.com/Max0n-1027/goft/internal/config"
+	"github.com/Max0n-1027/goft/internal/fsys"
 )
 
 // harness drives the engine over two local directories. The engine is direction

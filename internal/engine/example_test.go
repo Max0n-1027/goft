@@ -6,7 +6,7 @@ import (
 	"io/fs"
 	"net/textproto"
 
-	"goft/internal/engine"
+	"github.com/Max0n-1027/goft/internal/engine"
 )
 
 // Retryable is what keeps a retry from being wasted effort: only failures that

@@ -5,8 +5,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"goft/internal/i18n"
-	"goft/schema"
+	"github.com/Max0n-1027/goft/internal/i18n"
+	"github.com/Max0n-1027/goft/schema"
 )
 
 var schemaCmd = &cobra.Command{

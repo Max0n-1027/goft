@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"goft/internal/i18n"
+	"github.com/Max0n-1027/goft/internal/i18n"
 )
 
 // ParseLevel converts a configured level name into a slog.Level.
